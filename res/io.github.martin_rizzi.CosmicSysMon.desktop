@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=Monitor de sistema
+Comment=Uso de CPU por núcleo y memoria en el panel
+Exec=cosmic-applet-sysmon
+Terminal=false
+Type=Application
+StartupNotify=true
+NotShowIn=COSMIC
+Icon=utilities-system-monitor
+Categories=COSMIC
+Keywords=Monitor;System;CPU;Memory;Sistema;Memoria;
+X-CosmicApplet=true
+X-CosmicHoverPopup=Auto

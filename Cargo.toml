@@ -1,0 +1,18 @@
+[package]
+name = "cosmic-applet-sysmon"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-only"
+description = "Monitor de CPU por núcleo y RAM para el panel de COSMIC, réplica del plasmoid com.labatata.sysmonitor"
+
+[dependencies.libcosmic]
+git = "https://github.com/pop-os/libcosmic.git"
+rev = "a5267e623f356d1792cba7f480dd671cc8b52406"
+default-features = false
+features = ["applet", "applet-token"]
+
+[profile.release]
+lto = "thin"
+opt-level = 3
+debug = false
+strip = true
