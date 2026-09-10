@@ -107,7 +107,17 @@ fn ram_detail(app: &SysMon) -> Element<'_, Message> {
 
 /// Contenido del popup: la sección elegida, más el pie con monitor de sistema y
 /// ajustes. Las secciones sin colector todavía (Plan 2) muestran un texto de aviso.
+/// Si el usuario abrió los ajustes (engranaje del pie), se muestra esa página en vez
+/// del detalle.
 pub fn view(app: &SysMon) -> Element<'_, Message> {
+    if app.showing_settings() {
+        return app
+            .core()
+            .applet
+            .popup_container(crate::ui::settings::view(app))
+            .into();
+    }
+
     let body: Element<Message> = match app.selected() {
         Section::Cpu => cpu_detail(app),
         Section::Ram => ram_detail(app),

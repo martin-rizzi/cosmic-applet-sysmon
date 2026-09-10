@@ -92,6 +92,22 @@ pub fn normalize_section_order(raw: &str) -> Vec<Section> {
     out
 }
 
+/// Mueve una sección dentro del orden. Equivale a `moveSection` de ConfigGeneral.qml:
+/// fuera de rango no hace nada.
+pub fn move_in_order(order: &str, s: Section, delta: i32) -> String {
+    let mut list = normalize_section_order(order);
+    let Some(from) = list.iter().position(|x| *x == s) else {
+        return order.to_string();
+    };
+    let to = from as i32 + delta;
+    if to < 0 || to >= list.len() as i32 {
+        return list.iter().map(|x| x.key()).collect::<Vec<_>>().join(",");
+    }
+    let item = list.remove(from);
+    list.insert(to as usize, item);
+    list.iter().map(|x| x.key()).collect::<Vec<_>>().join(",")
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, CosmicConfigEntry)]
 #[version = 1]
 pub struct Config {
@@ -247,5 +263,30 @@ mod tests {
         assert_eq!(Section::Storage.index(), 3);
         assert_eq!(Section::Temps.index(), 4);
         assert_eq!(Section::Gpu.index(), 5);
+    }
+
+    #[test]
+    fn mover_una_seccion_hacia_arriba() {
+        // default: temps,network,storage,cpu,gpu,ram
+        let out = move_in_order(DEFAULT_SECTION_ORDER, Section::Storage, -1);
+        assert_eq!(out, "temps,storage,network,cpu,gpu,ram");
+    }
+
+    #[test]
+    fn mover_una_seccion_hacia_abajo() {
+        let out = move_in_order(DEFAULT_SECTION_ORDER, Section::Temps, 1);
+        assert_eq!(out, "network,temps,storage,cpu,gpu,ram");
+    }
+
+    #[test]
+    fn mover_en_los_bordes_no_hace_nada() {
+        assert_eq!(
+            move_in_order(DEFAULT_SECTION_ORDER, Section::Temps, -1),
+            DEFAULT_SECTION_ORDER
+        );
+        assert_eq!(
+            move_in_order(DEFAULT_SECTION_ORDER, Section::Ram, 1),
+            DEFAULT_SECTION_ORDER
+        );
     }
 }

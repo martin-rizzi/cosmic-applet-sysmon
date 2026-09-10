@@ -44,6 +44,14 @@ pub enum Message {
     OpenSystemMonitor,
     /// Click en el engranaje del pie del popup.
     OpenSettings,
+    /// Click en la cruz de la página de ajustes: vuelve al detalle.
+    CloseSettings,
+    /// Switch de "Mostrar" de una sección, en la página de ajustes.
+    ToggleSection(Section, bool),
+    /// Botones +/- del intervalo de actualización, en la página de ajustes.
+    SetInterval(u32),
+    /// Flechas ↑/↓ del orden de secciones, en la página de ajustes.
+    MoveSection(Section, i32),
     PopupClosed(Id),
     ConfigChanged(Config),
 }
@@ -245,6 +253,42 @@ impl cosmic::Application for SysMon {
             }
             Message::OpenSettings => {
                 self.showing_settings = true;
+                Task::none()
+            }
+            Message::CloseSettings => {
+                self.showing_settings = false;
+                Task::none()
+            }
+            Message::ToggleSection(section, value) => {
+                match section {
+                    Section::Cpu => self.config.show_cpu = value,
+                    Section::Ram => self.config.show_ram = value,
+                    Section::Network => self.config.show_network = value,
+                    Section::Storage => self.config.show_storage = value,
+                    Section::Temps => self.config.show_temps = value,
+                    Section::Gpu => self.config.show_gpu = value,
+                }
+                self.config.save(Self::APP_ID);
+                // Si se apagó la sección que el popup está mostrando, cae a la
+                // primera todavía visible. Si no queda ninguna visible, `selected`
+                // conserva el último valor: no hay panic, sólo el detalle
+                // muestra una sección oculta hasta que se vuelva a encender algo.
+                if !self.config.shown(self.selected) {
+                    if let Some(first) = self.config.ordered_sections().first() {
+                        self.selected = *first;
+                    }
+                }
+                Task::none()
+            }
+            Message::SetInterval(ms) => {
+                self.config.update_interval = ms.clamp(500, 10_000);
+                self.config.save(Self::APP_ID);
+                Task::none()
+            }
+            Message::MoveSection(section, delta) => {
+                self.config.section_order =
+                    crate::config::move_in_order(&self.config.section_order, section, delta);
+                self.config.save(Self::APP_ID);
                 Task::none()
             }
         }

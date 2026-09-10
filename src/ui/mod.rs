@@ -2,3 +2,4 @@
 
 pub mod compact;
 pub mod detail;
+pub mod settings;
