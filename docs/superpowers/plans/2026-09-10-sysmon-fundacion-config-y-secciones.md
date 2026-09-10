@@ -1207,10 +1207,18 @@ const CANDIDATES: [&str; 4] = [
 ];
 
 pub fn system_monitor_command() -> Option<&'static str> {
+    use std::os::unix::fs::PermissionsExt;
+
     CANDIDATES.into_iter().find(|c| {
         std::env::var_os("PATH")
             .map(|paths| {
-                std::env::split_paths(&paths).any(|dir| dir.join(c).is_file())
+                std::env::split_paths(&paths).any(|dir| {
+                    // Regular y con bit de ejecución: un archivo suelto con el nombre
+                    // correcto pero sin permiso haría dibujar un botón que no hace nada.
+                    std::fs::metadata(dir.join(c))
+                        .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+                        .unwrap_or(false)
+                })
             })
             .unwrap_or(false)
     })
