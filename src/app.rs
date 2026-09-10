@@ -8,15 +8,13 @@ use cosmic::Element;
 
 use std::time::Duration;
 
+use crate::config::Config;
 use crate::draw;
 use crate::metrics::cpu::Cpu;
 use crate::metrics::mem::{format_mib, Mem};
 
 const CPU_ICON: &[u8] = include_bytes!("../res/icons/am-cpu-symbolic.svg");
 const RAM_ICON: &[u8] = include_bytes!("../res/icons/am-memory-symbolic.svg");
-
-/// El plasmoid muestrea cada 2 s (`updateInterval`).
-const TICK: Duration = Duration::from_millis(2000);
 
 /// Tamaño de referencia del plasmoid: `Kirigami.Units.iconSizes.small`.
 const REFERENCE_ICON_SIZE: f32 = 16.0;
@@ -26,6 +24,7 @@ const PX_PER_CORE: f32 = 4.0;
 pub struct SysMon {
     core: Core,
     popup: Option<Id>,
+    config: Config,
     cpu: Cpu,
     mem: Mem,
 }
@@ -35,6 +34,7 @@ pub enum Message {
     Tick,
     TogglePopup,
     PopupClosed(Id),
+    ConfigChanged(Config),
 }
 
 impl SysMon {
@@ -66,6 +66,11 @@ impl SysMon {
         let mut handle = widget::icon::from_svg_bytes(bytes);
         handle.symbolic = true;
         widget::icon(handle).size(size).into()
+    }
+
+    fn tick_duration(&self) -> Duration {
+        // Mismo rango que el spinner del plasmoid.
+        Duration::from_millis(self.config.update_interval.clamp(500, 10_000) as u64)
     }
 
     /// Una sección del panel: ícono + medidor + porcentaje.
@@ -104,6 +109,7 @@ impl cosmic::Application for SysMon {
         let mut app = SysMon {
             core,
             popup: None,
+            config: Config::load(Self::APP_ID),
             cpu: Cpu::default(),
             mem: Mem::default(),
         };
@@ -126,7 +132,12 @@ impl cosmic::Application for SysMon {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        iced::time::every(TICK).map(|_| Message::Tick)
+        Subscription::batch([
+            iced::time::every(self.tick_duration()).map(|_| Message::Tick),
+            self.core
+                .watch_config::<Config>(Self::APP_ID)
+                .map(|update| Message::ConfigChanged(update.config)),
+        ])
     }
 
     fn on_close_requested(&self, id: Id) -> Option<Message> {
@@ -138,6 +149,10 @@ impl cosmic::Application for SysMon {
             Message::Tick => {
                 self.cpu.refresh();
                 self.mem.refresh();
+                Task::none()
+            }
+            Message::ConfigChanged(config) => {
+                self.config = config;
                 Task::none()
             }
             Message::PopupClosed(id) => {
