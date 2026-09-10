@@ -3,15 +3,14 @@
 use cosmic::app::{Core, Task};
 use cosmic::iced::window::Id;
 use cosmic::iced::{self, Alignment, Length, Subscription};
-use cosmic::widget::{self, Column, Row};
+use cosmic::widget::{self, Row};
 use cosmic::Element;
 
 use std::time::Duration;
 
 use crate::config::{Config, Section};
-use crate::draw;
 use crate::metrics::cpu::Cpu;
-use crate::metrics::mem::{format_mib, Mem};
+use crate::metrics::mem::Mem;
 
 pub const CPU_ICON: &[u8] = include_bytes!("../res/icons/am-cpu-symbolic.svg");
 pub const RAM_ICON: &[u8] = include_bytes!("../res/icons/am-memory-symbolic.svg");
@@ -27,16 +26,24 @@ pub struct SysMon {
     config: Config,
     cpu: Cpu,
     mem: Mem,
-    /// Sección elegida en la vista compacta; la consume la Task 5 (click por sección).
+    /// Sección que muestra el popup (o que mostraría si estuviera abierto).
     selected: Section,
-    /// Si el popup está mostrando el panel de ajustes; la consume la Task 6.
+    /// Si el popup está mostrando el panel de ajustes en vez del detalle de una
+    /// sección; el panel en sí lo arma la Task 6, acá sólo se guarda el estado.
     showing_settings: bool,
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
     Tick,
-    TogglePopup,
+    /// Click en una sección del panel: abre el popup en esa sección, lo cierra si ya
+    /// estaba mostrando la misma, o cambia de panel sin cerrarlo. Ver `main.qml:93-98`
+    /// del plasmoid.
+    OpenSection(Section),
+    /// Click en el ícono de monitor de sistema del pie del popup.
+    OpenSystemMonitor,
+    /// Click en el engranaje del pie del popup.
+    OpenSettings,
     PopupClosed(Id),
     ConfigChanged(Config),
 }
@@ -197,26 +204,48 @@ impl cosmic::Application for SysMon {
                 }
                 Task::none()
             }
-            Message::TogglePopup => {
-                if let Some(p) = self.popup.take() {
-                    cosmic::surface::surface_task(cosmic::surface::action::destroy_popup(p))
+            Message::OpenSection(section) => {
+                // Mismo comportamiento que el plasmoid: la misma sección cierra,
+                // otra cambia de panel sin cerrar.
+                if self.popup.is_some() && self.selected == section {
+                    if let Some(p) = self.popup.take() {
+                        cosmic::surface::surface_task(cosmic::surface::action::destroy_popup(p))
+                    } else {
+                        Task::none()
+                    }
                 } else {
-                    cosmic::surface::surface_task(cosmic::surface::action::app_popup(
-                        |_| Default::default(),
-                        |app: &mut SysMon| {
-                            let new_id = Id::unique();
-                            app.popup.replace(new_id);
-                            app.core.applet.get_popup_settings(
-                                app.core.main_window_id().unwrap(),
-                                new_id,
-                                None,
-                                None,
-                                None,
-                            )
-                        },
-                        None,
-                    ))
+                    self.selected = section;
+                    if self.popup.is_some() {
+                        Task::none()
+                    } else {
+                        cosmic::surface::surface_task(cosmic::surface::action::app_popup(
+                            |_| Default::default(),
+                            |app: &mut SysMon| {
+                                let new_id = Id::unique();
+                                app.popup.replace(new_id);
+                                app.core.applet.get_popup_settings(
+                                    app.core.main_window_id().unwrap(),
+                                    new_id,
+                                    None,
+                                    None,
+                                    None,
+                                )
+                            },
+                            None,
+                        ))
+                    }
                 }
+            }
+            Message::OpenSystemMonitor => {
+                if let Some(cmd) = crate::ui::detail::system_monitor_command() {
+                    // Único fork del applet, y sólo por acción explícita del usuario.
+                    let _ = std::process::Command::new(cmd).spawn();
+                }
+                Task::none()
+            }
+            Message::OpenSettings => {
+                self.showing_settings = true;
+                Task::none()
             }
         }
     }
@@ -226,61 +255,6 @@ impl cosmic::Application for SysMon {
     }
 
     fn view_window(&self, _id: Id) -> Element<'_, Self::Message> {
-        let border = self.text_color_hex();
-        let mut cores = Column::new().spacing(4);
-        for (i, usage) in self.cpu.cores.iter().enumerate() {
-            let bar = draw::horizontal_bar(
-                usage / 100.0,
-                140.0,
-                8.0,
-                draw::CORE_COLORS[i % draw::CORE_COLORS.len()],
-                &border,
-            );
-            cores = cores.push(
-                Row::new()
-                    .push(widget::text::caption(format!("cpu{i}")).width(Length::Fixed(48.0)))
-                    .push(
-                        widget::svg(widget::svg::Handle::from_memory(bar.into_bytes()))
-                            .width(Length::Fixed(140.0))
-                            .height(Length::Fixed(8.0)),
-                    )
-                    .push(
-                        widget::text::caption(format!("{usage:.0}%")).width(Length::Fixed(40.0)),
-                    )
-                    .spacing(8)
-                    .align_y(Alignment::Center),
-            );
-        }
-
-        let mem = &self.mem;
-        let ram_summary = format!(
-            "{} / {} ({:.0}%)",
-            format_mib(mem.used),
-            format_mib(mem.total),
-            mem.fraction() * 100.0
-        );
-
-        let mut content = Column::new()
-            .spacing(8)
-            .padding(12)
-            .push(widget::text::title4(format!("CPU {:.0}%", self.cpu.total)))
-            .push(cores)
-            .push(widget::divider::horizontal::default())
-            .push(widget::text::title4("Memoria"))
-            .push(widget::text::body(ram_summary))
-            .push(widget::text::caption(format!(
-                "En caché: {}",
-                format_mib(mem.cached)
-            )));
-
-        if mem.swap_total > 0.0 {
-            content = content.push(widget::text::caption(format!(
-                "Swap: {} / {}",
-                format_mib(mem.swap_used),
-                format_mib(mem.swap_total)
-            )));
-        }
-
-        self.core.applet.popup_container(content).into()
+        crate::ui::detail::view(self)
     }
 }

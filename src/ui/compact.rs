@@ -8,43 +8,45 @@ use crate::app::{Message, SysMon};
 use crate::config::Section;
 
 /// Arma la vista compacta del panel recorriendo `Config::ordered_sections()`: sólo
-/// dibuja las secciones visibles, en el orden configurado. El botón exterior sigue
-/// abriendo el popup (`Message::TogglePopup`); el click por sección llega en la Task 5.
+/// dibuja las secciones visibles, en el orden configurado. Cada sección es su propio
+/// botón — a diferencia del botón único que envolvía todo el panel hasta la Task 4,
+/// acá cada uno dispara `Message::OpenSection` con su propia sección, lo que permite
+/// la semántica de toggle/cambio de panel del plasmoid (`main.qml:93-98`).
 pub fn view(app: &SysMon) -> Element<'_, Message> {
     let horizontal = app.core().applet.is_horizontal();
     let spacing = app.spacing();
+    let padding = if horizontal {
+        [0, app.core().applet.suggested_padding(true).1]
+    } else {
+        [app.core().applet.suggested_padding(true).0, 0]
+    };
 
-    let mut parts: Vec<Element<Message>> = Vec::new();
+    let mut buttons: Vec<Element<Message>> = Vec::new();
     for s in app.config().ordered_sections() {
         if let Some(content) = section_content(app, s) {
-            parts.push(content);
+            let button = widget::button::custom(content)
+                .padding(padding)
+                .class(cosmic::theme::Button::AppletIcon)
+                .on_press(Message::OpenSection(s));
+            buttons.push(button.into());
         }
     }
 
     let content: Element<Message> = if horizontal {
         let mut row = Row::new().spacing(spacing * 2).align_y(Alignment::Center);
-        for p in parts {
-            row = row.push(p);
+        for b in buttons {
+            row = row.push(b);
         }
         row.into()
     } else {
         let mut col = Column::new().spacing(spacing * 2).align_x(Alignment::Center);
-        for p in parts {
-            col = col.push(p);
+        for b in buttons {
+            col = col.push(b);
         }
         col.into()
     };
 
-    let button = widget::button::custom(content)
-        .padding(if horizontal {
-            [0, app.core().applet.suggested_padding(true).1]
-        } else {
-            [app.core().applet.suggested_padding(true).0, 0]
-        })
-        .class(cosmic::theme::Button::AppletIcon)
-        .on_press(Message::TogglePopup);
-
-    app.core().applet.autosize_window(button).into()
+    app.core().applet.autosize_window(content).into()
 }
 
 /// `None` para las secciones que todavía no tienen colector (Plan 2).
