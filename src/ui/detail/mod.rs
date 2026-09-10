@@ -25,9 +25,21 @@ const CANDIDATES: [&str; 4] = [
 pub fn system_monitor_command() -> Option<&'static str> {
     CANDIDATES.into_iter().find(|c| {
         std::env::var_os("PATH")
-            .map(|paths| std::env::split_paths(&paths).any(|dir| dir.join(c).is_file()))
+            .map(|paths| std::env::split_paths(&paths).any(|dir| is_executable_file(&dir.join(c))))
             .unwrap_or(false)
     })
+}
+
+/// `is_file()` no alcanza: también hay que chequear el bit de ejecución, porque un
+/// archivo regular sin permiso de ejecución (por ejemplo un `btop` no ejecutable
+/// dejado por error en algún directorio del PATH) haría que el pie del popup ofrezca
+/// un botón cuyo `spawn()` falla en silencio.
+fn is_executable_file(path: &std::path::Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+
+    std::fs::metadata(path)
+        .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
 }
 
 /// Detalle de CPU: uso total y una barra horizontal por núcleo.
