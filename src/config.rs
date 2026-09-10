@@ -152,9 +152,17 @@ impl Config {
     }
 
     /// Persiste una clave suelta. Escribe un archivo por clave, atómicamente.
+    /// Si falla, se avisa por stderr en vez de tragarse el error en silencio.
     pub fn save(&self, app_id: &str) {
-        if let Ok(raw) = RawConfig::new(app_id, <Self as CosmicConfigEntry>::VERSION) {
-            let _ = self.write_entry(&raw);
+        match RawConfig::new(app_id, <Self as CosmicConfigEntry>::VERSION) {
+            Ok(raw) => {
+                if let Err(err) = self.write_entry(&raw) {
+                    eprintln!("sysmon: no se pudo guardar la configuración: {err}");
+                }
+            }
+            Err(err) => {
+                eprintln!("sysmon: no se pudo abrir cosmic-config para guardar: {err}");
+            }
         }
     }
 }
