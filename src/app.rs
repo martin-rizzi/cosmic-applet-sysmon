@@ -231,6 +231,13 @@ impl cosmic::Application for SysMon {
             Message::PopupClosed(id) => {
                 if self.popup.as_ref() == Some(&id) {
                     self.popup = None;
+                    // El popup también se cierra "desde afuera" (click en otro
+                    // lado), sin pasar por la rama de misma-sección de
+                    // `OpenSection` — este es el único lugar por el que pasa ese
+                    // camino. Si no resetéamos acá, la próxima vez que se abra en
+                    // cualquier sección seguiría mostrando ajustes en vez del
+                    // detalle pedido.
+                    self.showing_settings = false;
                 }
                 Task::none()
             }
@@ -239,6 +246,11 @@ impl cosmic::Application for SysMon {
                 // otra cambia de panel sin cerrar.
                 if self.popup.is_some() && self.selected == section {
                     if let Some(p) = self.popup.take() {
+                        // El popup deja de existir: que la próxima apertura
+                        // muestre la sección pedida, no la página de ajustes que
+                        // pudo haber quedado abierta antes de cerrar (ver
+                        // `PopupClosed`, que cubre el cierre "desde afuera").
+                        self.showing_settings = false;
                         cosmic::surface::surface_task(cosmic::surface::action::destroy_popup(p))
                     } else {
                         Task::none()
@@ -318,5 +330,65 @@ impl cosmic::Application for SysMon {
 
     fn view_window(&self, _id: Id) -> Element<'_, Self::Message> {
         crate::ui::detail::view(self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `SysMon` con un popup ya abierto en `selected`, para probar el reset de
+    /// `showing_settings` sin pasar por el runtime real (que necesitaría una
+    /// conexión Wayland). Los campos son privados pero este módulo es hijo de
+    /// `app`, así que puede construir el struct directo.
+    fn con_popup_abierto(selected: Section, showing_settings: bool) -> (SysMon, Id) {
+        let id = Id::unique();
+        let app = SysMon {
+            core: Core::default(),
+            popup: Some(id),
+            config: Config::default(),
+            cpu: Cpu::default(),
+            mem: Mem::default(),
+            selected,
+            showing_settings,
+        };
+        (app, id)
+    }
+
+    #[test]
+    fn cerrar_la_misma_seccion_apaga_showing_settings() {
+        let (mut app, _id) = con_popup_abierto(Section::Cpu, true);
+        let _ = cosmic::Application::update(&mut app, Message::OpenSection(Section::Cpu));
+        assert!(app.popup.is_none());
+        assert!(!app.showing_settings);
+    }
+
+    #[test]
+    fn popup_closed_con_id_que_coincide_apaga_showing_settings() {
+        let (mut app, id) = con_popup_abierto(Section::Cpu, true);
+        let _ = cosmic::Application::update(&mut app, Message::PopupClosed(id));
+        assert!(app.popup.is_none());
+        assert!(!app.showing_settings);
+    }
+
+    #[test]
+    fn popup_closed_con_id_que_no_coincide_no_toca_nada() {
+        // La guarda de id: un `PopupClosed` de un popup viejo/ajeno no debe
+        // cerrar el popup actual ni apagar `showing_settings`.
+        let (mut app, _id) = con_popup_abierto(Section::Cpu, true);
+        let otro_id = Id::unique();
+        let _ = cosmic::Application::update(&mut app, Message::PopupClosed(otro_id));
+        assert!(app.popup.is_some());
+        assert!(app.showing_settings);
+    }
+
+    #[test]
+    fn cambiar_de_seccion_con_popup_abierto_no_lo_destruye() {
+        // No romper lo que ya pasó revisión: la rama de sección-distinta no debe
+        // tocar `popup` (ni destruirlo ni recrearlo).
+        let (mut app, id) = con_popup_abierto(Section::Cpu, false);
+        let _ = cosmic::Application::update(&mut app, Message::OpenSection(Section::Ram));
+        assert_eq!(app.popup, Some(id));
+        assert_eq!(app.selected, Section::Ram);
     }
 }
