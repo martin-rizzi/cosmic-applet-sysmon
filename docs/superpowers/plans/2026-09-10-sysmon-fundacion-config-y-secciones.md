@@ -484,6 +484,9 @@ contra capturas reales de /proc."
     filtrado por los `show_*`
   - `config::normalize_section_order(raw: &str) -> Vec<Section>`
   - `config::DEFAULT_SECTION_ORDER: &str`
+  - `config::Config::shown(&self, s: Section) -> bool`
+  - `config::Config::load(app_id: &str) -> Self` — la consume Task 3
+  - `config::Config::save(&self, app_id: &str)` — la consume Task 6
 
 - [ ] **Step 1: Agregar las dependencias**
 
