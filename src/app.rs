@@ -243,7 +243,14 @@ impl cosmic::Application for SysMon {
             }
             Message::OpenSection(section) => {
                 // Mismo comportamiento que el plasmoid: la misma sección cierra,
-                // otra cambia de panel sin cerrar.
+                // otra cambia de panel sin cerrar. Si el popup estaba mostrando
+                // ajustes y el usuario clickea la sección que había quedado
+                // seleccionada antes de abrir el engranaje, esto la trata como
+                // "la misma sección": cierra, no vuelve a mostrar el detalle. Es
+                // el mismo toggle que ya existía para cualquier click repetido en
+                // el mismo ícono — no hacía falta un caso especial para settings,
+                // y evita que el usuario tenga que clickear dos veces (una para
+                // salir de ajustes, otra para cerrar) para lograr lo mismo.
                 if self.popup.is_some() && self.selected == section {
                     if let Some(p) = self.popup.take() {
                         // El popup deja de existir: que la próxima apertura
@@ -257,6 +264,11 @@ impl cosmic::Application for SysMon {
                     }
                 } else {
                     self.selected = section;
+                    // Clickear una sección expresa la intención de verla: si el
+                    // popup estaba mostrando ajustes, este click saca de esa
+                    // página tanto al abrirlo por primera vez (popup cerrado)
+                    // como al cambiar de panel con el popup ya abierto.
+                    self.showing_settings = false;
                     if self.popup.is_some() {
                         Task::none()
                     } else {
@@ -355,6 +367,19 @@ mod tests {
         (app, id)
     }
 
+    /// Variante sin popup, para probar el camino de apertura en frío.
+    fn con_popup_cerrado(selected: Section, showing_settings: bool) -> SysMon {
+        SysMon {
+            core: Core::default(),
+            popup: None,
+            config: Config::default(),
+            cpu: Cpu::default(),
+            mem: Mem::default(),
+            selected,
+            showing_settings,
+        }
+    }
+
     #[test]
     fn cerrar_la_misma_seccion_apaga_showing_settings() {
         let (mut app, _id) = con_popup_abierto(Section::Cpu, true);
@@ -390,5 +415,43 @@ mod tests {
         let _ = cosmic::Application::update(&mut app, Message::OpenSection(Section::Ram));
         assert_eq!(app.popup, Some(id));
         assert_eq!(app.selected, Section::Ram);
+    }
+
+    #[test]
+    fn cambiar_de_seccion_con_settings_abierto_lo_saca_de_ajustes() {
+        // Ronda 3: con el popup mostrando ajustes, clickear OTRA sección tiene
+        // que mostrar esa sección, no dejar la página de configuración puesta.
+        let (mut app, id) = con_popup_abierto(Section::Cpu, true);
+        let _ = cosmic::Application::update(&mut app, Message::OpenSection(Section::Ram));
+        assert_eq!(app.popup, Some(id)); // sigue sin destruirse ni recrearse
+        assert_eq!(app.selected, Section::Ram);
+        assert!(!app.showing_settings);
+    }
+
+    #[test]
+    fn abrir_con_el_popup_cerrado_no_deja_settings_prendido() {
+        // Defensivo: si por algún motivo `showing_settings` quedó en `true` con
+        // el popup ya cerrado (hoy no debería pasar, `PopupClosed` y el cierre
+        // por misma-sección ya lo apagan), abrir una sección desde cero también
+        // tiene que mostrar esa sección.
+        let mut app = con_popup_cerrado(Section::Cpu, true);
+        let _ = cosmic::Application::update(&mut app, Message::OpenSection(Section::Ram));
+        assert_eq!(app.selected, Section::Ram);
+        assert!(!app.showing_settings);
+    }
+
+    #[test]
+    fn misma_seccion_con_settings_abierto_cierra_en_vez_de_volver_al_detalle() {
+        // Decisión de diseño (ronda 3): si el popup muestra ajustes y se clickea
+        // la sección que había quedado seleccionada antes de abrir el engranaje,
+        // se trata igual que cualquier click repetido en el mismo ícono — cierra
+        // el popup — en vez de agregar un caso especial que vuelva a mostrar el
+        // detalle. Es el mismo test que `cerrar_la_misma_seccion_...` de la
+        // ronda 2; queda repetido acá con nombre explícito para dejar registrada
+        // la decisión.
+        let (mut app, _id) = con_popup_abierto(Section::Cpu, true);
+        let _ = cosmic::Application::update(&mut app, Message::OpenSection(Section::Cpu));
+        assert!(app.popup.is_none());
+        assert!(!app.showing_settings);
     }
 }
