@@ -9,7 +9,8 @@ use cosmic::Element;
 use std::time::Duration;
 
 use crate::draw;
-use crate::proc::{format_mib, Cpu, Mem};
+use crate::metrics::cpu::Cpu;
+use crate::metrics::mem::{format_mib, Mem};
 
 const CPU_ICON: &[u8] = include_bytes!("../res/icons/am-cpu-symbolic.svg");
 const RAM_ICON: &[u8] = include_bytes!("../res/icons/am-memory-symbolic.svg");

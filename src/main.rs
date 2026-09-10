@@ -2,7 +2,7 @@
 
 mod app;
 mod draw;
-mod proc;
+mod metrics;
 
 fn main() -> cosmic::iced::Result {
     cosmic::applet::run::<app::SysMon>(())
