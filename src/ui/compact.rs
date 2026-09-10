@@ -32,6 +32,23 @@ pub fn view(app: &SysMon) -> Element<'_, Message> {
         }
     }
 
+    if buttons.is_empty() {
+        // No borrar por "código muerto": sin esto, apagar `show_cpu` y `show_ram`
+        // (las únicas dos secciones con colector hoy — Network/Storage/Temps/Gpu
+        // siempre devuelven `None` en `section_content` porque el Plan 2 todavía no
+        // les puso colector) deja el panel sin ningún botón. El engranaje que abre
+        // esta misma página de ajustes vive en el pie del popup, y a ese pie sólo
+        // se llega clickeando un botón de sección — que ya no existiría. Este botón
+        // de resguardo es el único camino de vuelta a la configuración en ese
+        // estado; `Message::OpenSettings` abre el popup si hace falta (ver
+        // `SysMon::open_popup_task` en `app.rs`) y además muestra la página.
+        let boton = widget::button::icon(widget::icon::from_name("preferences-system-symbolic"))
+            .padding(padding)
+            .class(cosmic::theme::Button::AppletIcon)
+            .on_press(Message::OpenSettings);
+        buttons.push(boton.into());
+    }
+
     let content: Element<Message> = if horizontal {
         let mut row = Row::new().spacing(spacing * 2).align_y(Alignment::Center);
         for b in buttons {

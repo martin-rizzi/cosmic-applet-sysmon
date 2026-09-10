@@ -103,6 +103,28 @@ impl SysMon {
         )
     }
 
+    /// Arma la `Task` que abre el popup, sin tocar `self.selected` ni
+    /// `showing_settings` — eso lo decide quien la llama. Compartida por
+    /// `OpenSection` (cuando no hay popup) y `OpenSettings` (cuando el botón de
+    /// resguardo del panel lo dispara con el popup cerrado).
+    fn open_popup_task() -> Task<Message> {
+        cosmic::surface::surface_task(cosmic::surface::action::app_popup(
+            |_| Default::default(),
+            |app: &mut SysMon| {
+                let new_id = Id::unique();
+                app.popup.replace(new_id);
+                app.core.applet.get_popup_settings(
+                    app.core.main_window_id().unwrap(),
+                    new_id,
+                    None,
+                    None,
+                    None,
+                )
+            },
+            None,
+        ))
+    }
+
     fn label(&self, value: String) -> Element<'_, Message> {
         self.core
             .applet
@@ -226,21 +248,7 @@ impl cosmic::Application for SysMon {
                     if self.popup.is_some() {
                         Task::none()
                     } else {
-                        cosmic::surface::surface_task(cosmic::surface::action::app_popup(
-                            |_| Default::default(),
-                            |app: &mut SysMon| {
-                                let new_id = Id::unique();
-                                app.popup.replace(new_id);
-                                app.core.applet.get_popup_settings(
-                                    app.core.main_window_id().unwrap(),
-                                    new_id,
-                                    None,
-                                    None,
-                                    None,
-                                )
-                            },
-                            None,
-                        ))
+                        Self::open_popup_task()
                     }
                 }
             }
@@ -253,7 +261,17 @@ impl cosmic::Application for SysMon {
             }
             Message::OpenSettings => {
                 self.showing_settings = true;
-                Task::none()
+                // El engranaje del pie llega acá con el popup ya abierto (Task::none
+                // alcanza). Pero el botón de resguardo de `ui::compact` (cuando
+                // ningún `show_*` deja botones de sección en el panel) dispara este
+                // mismo mensaje con el popup cerrado: si no lo abriéramos acá, el
+                // flag `showing_settings` quedaría prendido sin que `view_window` se
+                // llegue a invocar nunca, porque sólo se invoca sobre un popup vivo.
+                if self.popup.is_some() {
+                    Task::none()
+                } else {
+                    Self::open_popup_task()
+                }
             }
             Message::CloseSettings => {
                 self.showing_settings = false;
