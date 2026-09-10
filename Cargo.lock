@@ -889,7 +889,9 @@ dependencies = [
 name = "cosmic-applet-sysmon"
 version = "0.1.0"
 dependencies = [
+ "cosmic-config 1.0.0 (git+https://github.com/pop-os/libcosmic.git?rev=a5267e623f356d1792cba7f480dd671cc8b52406)",
  "libcosmic",
+ "serde",
 ]
 
 [[package]]
