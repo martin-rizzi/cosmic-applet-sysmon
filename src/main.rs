@@ -4,6 +4,7 @@ mod app;
 mod config;
 mod draw;
 mod metrics;
+mod ui;
 
 fn main() -> cosmic::iced::Result {
     cosmic::applet::run::<app::SysMon>(())

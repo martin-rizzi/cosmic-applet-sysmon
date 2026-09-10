@@ -8,18 +8,18 @@ use cosmic::Element;
 
 use std::time::Duration;
 
-use crate::config::Config;
+use crate::config::{Config, Section};
 use crate::draw;
 use crate::metrics::cpu::Cpu;
 use crate::metrics::mem::{format_mib, Mem};
 
-const CPU_ICON: &[u8] = include_bytes!("../res/icons/am-cpu-symbolic.svg");
-const RAM_ICON: &[u8] = include_bytes!("../res/icons/am-memory-symbolic.svg");
+pub const CPU_ICON: &[u8] = include_bytes!("../res/icons/am-cpu-symbolic.svg");
+pub const RAM_ICON: &[u8] = include_bytes!("../res/icons/am-memory-symbolic.svg");
 
 /// Tamaño de referencia del plasmoid: `Kirigami.Units.iconSizes.small`.
-const REFERENCE_ICON_SIZE: f32 = 16.0;
+pub const REFERENCE_ICON_SIZE: f32 = 16.0;
 /// Ancho por núcleo a ese tamaño de referencia.
-const PX_PER_CORE: f32 = 4.0;
+pub const PX_PER_CORE: f32 = 4.0;
 
 pub struct SysMon {
     core: Core,
@@ -27,6 +27,10 @@ pub struct SysMon {
     config: Config,
     cpu: Cpu,
     mem: Mem,
+    /// Sección elegida en la vista compacta; la consume la Task 5 (click por sección).
+    selected: Section,
+    /// Si el popup está mostrando el panel de ajustes; la consume la Task 6.
+    showing_settings: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -38,8 +42,38 @@ pub enum Message {
 }
 
 impl SysMon {
+    pub fn core(&self) -> &Core {
+        &self.core
+    }
+
+    pub fn config(&self) -> &Config {
+        &self.config
+    }
+
+    pub fn cpu(&self) -> &Cpu {
+        &self.cpu
+    }
+
+    pub fn mem(&self) -> &Mem {
+        &self.mem
+    }
+
+    pub fn selected(&self) -> Section {
+        self.selected
+    }
+
+    pub fn showing_settings(&self) -> bool {
+        self.showing_settings
+    }
+
+    /// `smallSpacing` de Kirigami escalado al tamaño de ícono del panel.
+    pub fn spacing(&self) -> u16 {
+        let h = f32::from(self.core.applet.suggested_size(true).1);
+        (4.0 * (h / REFERENCE_ICON_SIZE)).round() as u16
+    }
+
     /// Color del texto del panel en hexadecimal, para los bordes de los medidores.
-    fn text_color_hex(&self) -> String {
+    pub fn text_color_hex(&self) -> String {
         let theme = self
             .core
             .applet
@@ -74,7 +108,7 @@ impl SysMon {
     }
 
     /// Una sección del panel: ícono + medidor + porcentaje.
-    fn section<'a>(
+    pub fn section<'a>(
         &'a self,
         icon: &'static [u8],
         icon_size: u16,
@@ -112,6 +146,8 @@ impl cosmic::Application for SysMon {
             config: Config::load(Self::APP_ID),
             cpu: Cpu::default(),
             mem: Mem::default(),
+            selected: Section::Cpu,
+            showing_settings: false,
         };
         // Primera lectura: deja la línea base de /proc/stat y la RAM ya poblada.
         app.cpu.refresh();
@@ -186,73 +222,7 @@ impl cosmic::Application for SysMon {
     }
 
     fn view(&self) -> Element<'_, Self::Message> {
-        let horizontal = self.core.applet.is_horizontal();
-        let icon_size = self.core.applet.suggested_size(true).1;
-        let h = f32::from(icon_size);
-        let scale = h / REFERENCE_ICON_SIZE;
-        let border = self.text_color_hex();
-
-        // Ancho de la caja de CPU: como en el QML, 4 px por núcleo (a escala),
-        // con un mínimo del 70 % de la altura.
-        let cores = self.cpu.core_count().max(1) as f32;
-        let cpu_w = (h * 0.7).max(cores * PX_PER_CORE * scale);
-        let meter_w = (h * 0.7).round();
-
-        // `smallSpacing` de Kirigami es 4 px con el tamaño de ícono de referencia.
-        let spacing = (4.0 * scale).round() as u16;
-
-        let cpu = self.section(
-            CPU_ICON,
-            icon_size,
-            draw::cpu_bars(&self.cpu.cores, cpu_w, h, &border),
-            cpu_w,
-            h,
-            // Como el plasmoid: un decimal sólo cuando está por debajo del 1 %.
-            if self.cpu.total < 1.0 {
-                format!("{:.1}%", self.cpu.total)
-            } else {
-                format!("{:.0}%", self.cpu.total)
-            },
-            spacing,
-        );
-
-        let fraction = self.mem.fraction();
-        let ram = self.section(
-            RAM_ICON,
-            icon_size,
-            draw::usage_meter(fraction, meter_w, h, &border),
-            meter_w,
-            h,
-            format!("{:.0}%", fraction * 100.0),
-            spacing,
-        );
-
-        let content: Element<Message> = if horizontal {
-            Row::new()
-                .push(cpu)
-                .push(ram)
-                .spacing(spacing * 2)
-                .align_y(Alignment::Center)
-                .into()
-        } else {
-            Column::new()
-                .push(cpu)
-                .push(ram)
-                .spacing(spacing * 2)
-                .align_x(Alignment::Center)
-                .into()
-        };
-
-        let button = widget::button::custom(content)
-            .padding(if horizontal {
-                [0, self.core.applet.suggested_padding(true).1]
-            } else {
-                [self.core.applet.suggested_padding(true).0, 0]
-            })
-            .class(cosmic::theme::Button::AppletIcon)
-            .on_press(Message::TogglePopup);
-
-        self.core.applet.autosize_window(button).into()
+        crate::ui::compact::view(self)
     }
 
     fn view_window(&self, _id: Id) -> Element<'_, Self::Message> {
