@@ -1,0 +1,10 @@
+processor	: 0
+vendor_id	: GenuineIntel
+model name	: Intel(R) Core(TM) i5-10400T CPU @ 2.00GHz
+cpu MHz		: 3214.864
+flags		: fpu vme de pse
+processor	: 1
+vendor_id	: GenuineIntel
+model name	: Intel(R) Core(TM) i5-10400T CPU @ 2.00GHz
+cpu MHz		: 3231.064
+flags		: fpu vme de pse

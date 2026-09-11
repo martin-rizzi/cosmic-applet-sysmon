@@ -609,8 +609,9 @@ fn user_suma_nice_y_system_va_aparte() {
     cpu.apply(vec![CpuTicks { total: 1000, active: 0, user: 0, system: 0 }]);
     cpu.apply(vec![CpuTicks { total: 1200, active: 100, user: 60, system: 40 }]);
     assert_eq!(cpu.total, 50.0);
-    assert_eq!(cpu.user, 30.0);
-    assert_eq!(cpu.system, 20.0);
+    // 60 / 200 en f32 da 30.000002: se compara con tolerancia.
+    assert!((cpu.user - 30.0).abs() < 1e-4, "{}", cpu.user);
+    assert!((cpu.system - 20.0).abs() < 1e-4, "{}", cpu.system);
 }
 ```
 

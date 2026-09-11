@@ -12,6 +12,9 @@ use std::fs;
 pub struct CpuTicks {
     pub total: u64,
     pub active: u64,
+    /// user + nice, como `pctUser` en `parseCpuStat`.
+    pub user: u64,
+    pub system: u64,
 }
 
 /// Índice 0 es el agregado "cpu"; el resto son los núcleos, en el orden del archivo.
@@ -33,6 +36,8 @@ pub fn parse_stat(raw: &str) -> Vec<CpuTicks> {
         out.push(CpuTicks {
             total: active + idle + iowait,
             active,
+            user: user + nice,
+            system,
         });
     }
     out
@@ -43,6 +48,10 @@ pub struct Cpu {
     prev: Vec<CpuTicks>,
     pub cores: Vec<f32>,
     pub total: f32,
+    /// Porcentaje del agregado en modo usuario (incluye nice).
+    pub user: f32,
+    /// Porcentaje del agregado en modo kernel.
+    pub system: f32,
 }
 
 impl Cpu {
@@ -63,6 +72,18 @@ impl Cpu {
             };
             pcts.push(pct);
         }
+        let (user, system) = match self.prev.first() {
+            Some(prev) if now[0].total > prev.total => {
+                let dt = (now[0].total - prev.total) as f32;
+                let pct = |now: u64, before: u64| {
+                    (now.saturating_sub(before) as f32 / dt * 100.0).clamp(0.0, 100.0)
+                };
+                (pct(now[0].user, prev.user), pct(now[0].system, prev.system))
+            }
+            _ => (0.0, 0.0),
+        };
+        self.user = user;
+        self.system = system;
         self.total = pcts[0];
         self.cores = pcts[1..].to_vec();
         self.prev = now;
@@ -125,5 +146,26 @@ mod tests {
         cpu.apply(parse_stat(STAT_A));
         cpu.apply(parse_stat(STAT_A));
         assert_eq!(cpu.total, 0.0);
+    }
+
+    #[test]
+    fn user_y_system_del_agregado() {
+        // En los fixtures sólo avanza `user` (+25 de 100).
+        let mut cpu = Cpu::default();
+        cpu.apply(parse_stat(STAT_A));
+        cpu.apply(parse_stat(STAT_B));
+        assert_eq!(cpu.user, 25.0);
+        assert_eq!(cpu.system, 0.0);
+    }
+
+    #[test]
+    fn user_suma_nice_y_system_va_aparte() {
+        let mut cpu = Cpu::default();
+        cpu.apply(vec![CpuTicks { total: 1000, active: 0, user: 0, system: 0 }]);
+        cpu.apply(vec![CpuTicks { total: 1200, active: 100, user: 60, system: 40 }]);
+        assert_eq!(cpu.total, 50.0);
+        // 60 / 200 en f32 da 30.000002: se compara con tolerancia.
+        assert!((cpu.user - 30.0).abs() < 1e-4, "{}", cpu.user);
+        assert!((cpu.system - 20.0).abs() < 1e-4, "{}", cpu.system);
     }
 }

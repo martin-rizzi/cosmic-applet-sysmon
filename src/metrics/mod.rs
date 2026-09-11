@@ -3,6 +3,7 @@
 //! Colectores y el agregado que decide qué se refresca en cada tick.
 
 pub mod cpu;
+pub mod cpuinfo;
 pub mod history;
 pub mod mem;
 
@@ -10,6 +11,7 @@ use std::time::Instant;
 
 use crate::config::Section;
 use cpu::Cpu;
+use cpuinfo::CpuInfo;
 use history::History;
 use mem::Mem;
 
@@ -44,6 +46,10 @@ pub fn expensive_for(detail: Option<Section>) -> Expensive {
 pub struct Metrics {
     pub cpu: Cpu,
     pub mem: Mem,
+    /// Modelo y reloj; sólo se actualizan con el panel de CPU a la vista.
+    pub cpu_info: CpuInfo,
+    /// Segundos desde el arranque; ídem.
+    pub uptime_secs: u64,
     /// Últimos 60 usos totales de CPU (0–1), uno por tick.
     pub cpu_history: History,
     /// Últimas 60 fracciones de RAM usada, una por tick.
@@ -65,7 +71,11 @@ impl Metrics {
     /// La parte cara, sola. `SysMon` la llama también al abrir un panel, para que no
     /// muestre la lista vacía hasta el próximo tick.
     pub fn refresh_expensive(&mut self, detail: Option<Section>) {
-        let _expensive = expensive_for(detail);
+        let expensive = expensive_for(detail);
+        if expensive.cpu_detail {
+            self.cpu_info.refresh();
+            self.uptime_secs = cpuinfo::read_uptime();
+        }
     }
 
     /// Segundos desde el tick anterior; 0 en el primero.

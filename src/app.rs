@@ -122,6 +122,10 @@ impl SysMon {
             |app: &mut SysMon| {
                 let new_id = Id::unique();
                 app.popup.replace(new_id);
+                // El popup recién existe acá: que el panel no espere al próximo tick
+                // para tener sus datos caros.
+                let detail = app.visible_detail();
+                app.metrics.refresh_expensive(detail);
                 app.core.applet.get_popup_settings(
                     app.core.main_window_id().unwrap(),
                     new_id,
@@ -176,55 +180,8 @@ impl SysMon {
             .align_y(Alignment::Center)
             .into()
     }
-}
 
-impl cosmic::Application for SysMon {
-    type Executor = cosmic::executor::Default;
-    type Flags = ();
-    type Message = Message;
-
-    const APP_ID: &'static str = "io.github.martin_rizzi.CosmicSysMon";
-
-    fn init(core: Core, _flags: Self::Flags) -> (Self, Task<Self::Message>) {
-        let mut app = SysMon {
-            core,
-            popup: None,
-            config: Config::load(Self::APP_ID),
-            metrics: Metrics::default(),
-            selected: Section::Cpu,
-            showing_settings: false,
-        };
-        // Primera lectura: deja las líneas base de los contadores.
-        app.metrics.tick(Instant::now(), None);
-        (app, Task::none())
-    }
-
-    fn core(&self) -> &Core {
-        &self.core
-    }
-
-    fn core_mut(&mut self) -> &mut Core {
-        &mut self.core
-    }
-
-    fn style(&self) -> Option<cosmic::iced::theme::Style> {
-        Some(cosmic::applet::style())
-    }
-
-    fn subscription(&self) -> Subscription<Message> {
-        Subscription::batch([
-            iced::time::every(self.tick_duration()).map(|_| Message::Tick),
-            self.core
-                .watch_config::<Config>(Self::APP_ID)
-                .map(|update| Message::ConfigChanged(update.config)),
-        ])
-    }
-
-    fn on_close_requested(&self, id: Id) -> Option<Message> {
-        Some(Message::PopupClosed(id))
-    }
-
-    fn update(&mut self, message: Self::Message) -> Task<Self::Message> {
+    fn handle(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Tick => {
                 self.metrics.tick(Instant::now(), self.visible_detail());
@@ -316,7 +273,7 @@ impl cosmic::Application for SysMon {
                     Section::Temps => self.config.show_temps = value,
                     Section::Gpu => self.config.show_gpu = value,
                 }
-                self.config.save(Self::APP_ID);
+                self.config.save(<Self as cosmic::Application>::APP_ID);
                 // Si se apagó la sección que el popup está mostrando, cae a la
                 // primera todavía visible. Si no queda ninguna visible, `selected`
                 // conserva el último valor: no hay panic, sólo el detalle
@@ -330,16 +287,75 @@ impl cosmic::Application for SysMon {
             }
             Message::SetInterval(ms) => {
                 self.config.update_interval = ms.clamp(500, 10_000);
-                self.config.save(Self::APP_ID);
+                self.config.save(<Self as cosmic::Application>::APP_ID);
                 Task::none()
             }
             Message::MoveSection(section, delta) => {
                 self.config.section_order =
                     crate::config::move_in_order(&self.config.section_order, section, delta);
-                self.config.save(Self::APP_ID);
+                self.config.save(<Self as cosmic::Application>::APP_ID);
                 Task::none()
             }
         }
+    }
+}
+
+impl cosmic::Application for SysMon {
+    type Executor = cosmic::executor::Default;
+    type Flags = ();
+    type Message = Message;
+
+    const APP_ID: &'static str = "io.github.martin_rizzi.CosmicSysMon";
+
+    fn init(core: Core, _flags: Self::Flags) -> (Self, Task<Self::Message>) {
+        let mut app = SysMon {
+            core,
+            popup: None,
+            config: Config::load(Self::APP_ID),
+            metrics: Metrics::default(),
+            selected: Section::Cpu,
+            showing_settings: false,
+        };
+        // Primera lectura: deja las líneas base de los contadores.
+        app.metrics.tick(Instant::now(), None);
+        (app, Task::none())
+    }
+
+    fn core(&self) -> &Core {
+        &self.core
+    }
+
+    fn core_mut(&mut self) -> &mut Core {
+        &mut self.core
+    }
+
+    fn style(&self) -> Option<cosmic::iced::theme::Style> {
+        Some(cosmic::applet::style())
+    }
+
+    fn subscription(&self) -> Subscription<Message> {
+        Subscription::batch([
+            iced::time::every(self.tick_duration()).map(|_| Message::Tick),
+            self.core
+                .watch_config::<Config>(Self::APP_ID)
+                .map(|update| Message::ConfigChanged(update.config)),
+        ])
+    }
+
+    fn on_close_requested(&self, id: Id) -> Option<Message> {
+        Some(Message::PopupClosed(id))
+    }
+
+    fn update(&mut self, message: Self::Message) -> Task<Self::Message> {
+        let before = self.visible_detail();
+        let task = self.handle(message);
+        let after = self.visible_detail();
+        // Cambio de sección con el popup abierto, o salida de ajustes: el panel nuevo
+        // carga sus datos caros ya, no en el próximo tick.
+        if after.is_some() && after != before {
+            self.metrics.refresh_expensive(after);
+        }
+        task
     }
 
     fn view(&self) -> Element<'_, Self::Message> {
