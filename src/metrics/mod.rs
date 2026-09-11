@@ -5,6 +5,7 @@
 pub mod cpu;
 pub mod cpuinfo;
 pub mod disk;
+pub mod gpu;
 pub mod history;
 pub mod mem;
 pub mod net;
@@ -17,6 +18,7 @@ use crate::config::Section;
 use cpu::Cpu;
 use cpuinfo::CpuInfo;
 use disk::Storage;
+use gpu::Gpu;
 use history::History;
 use mem::Mem;
 use net::Net;
@@ -73,6 +75,7 @@ pub struct Metrics {
     pub disk_read_history: History,
     /// Escritura, ídem.
     pub disk_write_history: History,
+    pub gpu: Gpu,
     /// Últimos 60 usos totales de CPU (0–1), uno por tick.
     pub cpu_history: History,
     /// Últimas 60 fracciones de RAM usada, una por tick.
@@ -97,6 +100,7 @@ impl Metrics {
         if !expensive_for(detail).storage_detail {
             self.storage.refresh_primary();
         }
+        self.gpu.refresh_sysfs();
         self.cpu_history.push(self.cpu.total / 100.0);
         self.ram_history.push(self.mem.fraction());
         self.refresh_expensive(detail);
@@ -112,6 +116,9 @@ impl Metrics {
         }
         if expensive.storage_detail {
             self.storage.refresh_full();
+        }
+        if expensive.gpu_detail {
+            self.gpu.refresh_nvidia();
         }
     }
 

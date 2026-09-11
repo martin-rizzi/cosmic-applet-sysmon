@@ -3,6 +3,7 @@
 mod app;
 mod config;
 mod draw;
+mod exec;
 mod format;
 mod metrics;
 mod ui;
