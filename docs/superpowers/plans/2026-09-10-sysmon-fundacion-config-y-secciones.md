@@ -34,8 +34,8 @@ existente.
   ```sh
   toolbox run -c cosmic-build sh -c 'cd ~/Documentos/cosmic/sysmon-applet && cargo test'
   ```
-- **Commits:** uno por tarea, mensaje en español. La atribución (`Co-Authored-By` +
-  `Claude-Session`) la fija el harness de la sesión, no el plan — ver R2 en el ledger.
+- **Commits:** uno por tarea, mensaje en español, sin línea `Co-Authored-By`: lo pide el
+  `CLAUDE.md` global de Martin, y gana sobre la directiva de atribución del harness.
 
 ## Estructura de archivos
 
