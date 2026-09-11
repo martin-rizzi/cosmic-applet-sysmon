@@ -6,6 +6,7 @@ pub mod cpu;
 pub mod cpuinfo;
 pub mod history;
 pub mod mem;
+pub mod temp;
 
 use std::time::Instant;
 
@@ -14,6 +15,11 @@ use cpu::Cpu;
 use cpuinfo::CpuInfo;
 use history::History;
 use mem::Mem;
+
+/// Contenido de un archivo chico de /proc o /sys, sin espacios ni salto final.
+pub(crate) fn read_trimmed(path: &std::path::Path) -> Option<String> {
+    std::fs::read_to_string(path).ok().map(|s| s.trim().to_string())
+}
 
 /// Qué parte cara del muestreo corre (spec §3.1). Lo que no figura acá es barato y corre
 /// en cada tick, porque lo usa la vista del panel.
@@ -50,6 +56,8 @@ pub struct Metrics {
     pub cpu_info: CpuInfo,
     /// Segundos desde el arranque; ídem.
     pub uptime_secs: u64,
+    /// Un renglón por sensor, en el orden de hwmon.
+    pub temps: Vec<temp::Reading>,
     /// Últimos 60 usos totales de CPU (0–1), uno por tick.
     pub cpu_history: History,
     /// Últimas 60 fracciones de RAM usada, una por tick.
@@ -63,6 +71,7 @@ impl Metrics {
         let _elapsed = self.elapsed_since_last(now);
         self.cpu.refresh();
         self.mem.refresh();
+        self.temps = temp::read_hwmon(std::path::Path::new("/sys/class/hwmon"));
         self.cpu_history.push(self.cpu.total / 100.0);
         self.ram_history.push(self.mem.fraction());
         self.refresh_expensive(detail);
