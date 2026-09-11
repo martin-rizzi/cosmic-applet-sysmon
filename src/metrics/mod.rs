@@ -9,6 +9,7 @@ pub mod gpu;
 pub mod history;
 pub mod mem;
 pub mod net;
+pub mod procs;
 pub mod rate;
 pub mod temp;
 
@@ -22,6 +23,7 @@ use gpu::Gpu;
 use history::History;
 use mem::Mem;
 use net::Net;
+use procs::Procs;
 
 /// Contenido de un archivo chico de /proc o /sys, sin espacios ni salto final.
 pub(crate) fn read_trimmed(path: &std::path::Path) -> Option<String> {
@@ -76,6 +78,7 @@ pub struct Metrics {
     /// Escritura, ídem.
     pub disk_write_history: History,
     pub gpu: Gpu,
+    pub procs: Procs,
     /// Últimos 60 usos totales de CPU (0–1), uno por tick.
     pub cpu_history: History,
     /// Últimas 60 fracciones de RAM usada, una por tick.
@@ -113,12 +116,21 @@ impl Metrics {
         if expensive.cpu_detail {
             self.cpu_info.refresh();
             self.uptime_secs = cpuinfo::read_uptime();
+            if let Some(total) = self.cpu.total_jiffies() {
+                self.procs.refresh_cpu(total, self.cpu.core_count());
+            }
+        } else {
+            self.procs.forget_cpu();
+        }
+        if expensive.ram_detail {
+            self.procs.refresh_mem(rustix::param::page_size() as u64, self.mem.total);
         }
         if expensive.storage_detail {
             self.storage.refresh_full();
         }
         if expensive.gpu_detail {
             self.gpu.refresh_nvidia();
+            self.procs.refresh_vram(&self.gpu.nvidia_processes);
         }
     }
 

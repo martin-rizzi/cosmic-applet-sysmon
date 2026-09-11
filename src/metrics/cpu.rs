@@ -98,6 +98,12 @@ impl Cpu {
     pub fn core_count(&self) -> usize {
         self.cores.len()
     }
+
+    /// Jiffies acumulados del agregado en la última muestra. La consume el top de procesos
+    /// para saber cuánto tiempo pasó sin reloj de pared ni `CLK_TCK`.
+    pub fn total_jiffies(&self) -> Option<u64> {
+        self.prev.first().map(|t| t.total)
+    }
 }
 
 #[cfg(test)]
@@ -167,5 +173,13 @@ mod tests {
         // 60 / 200 en f32 da 30.000002: se compara con tolerancia.
         assert!((cpu.user - 30.0).abs() < 1e-4, "{}", cpu.user);
         assert!((cpu.system - 20.0).abs() < 1e-4, "{}", cpu.system);
+    }
+
+    #[test]
+    fn total_jiffies_es_el_agregado_de_la_ultima_muestra() {
+        let mut cpu = Cpu::default();
+        assert_eq!(cpu.total_jiffies(), None);
+        cpu.apply(parse_stat(STAT_A));
+        assert_eq!(cpu.total_jiffies(), Some(483_241_463));
     }
 }
