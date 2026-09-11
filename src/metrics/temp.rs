@@ -38,10 +38,24 @@ fn numbered(dir: &Path, prefix: &str, suffix: &str) -> Vec<(u32, PathBuf)> {
     out
 }
 
+/// Chips de temperatura de CPU. Van primero porque el panel muestra sólo las dos primeras
+/// lecturas, y `sensors` —de donde las toma el plasmoid— lista estos antes que las zonas
+/// ACPI o el PCH.
+const CPU_CHIPS: [&str; 4] = ["coretemp", "k10temp", "zenpower", "cpu_thermal"];
+
 pub fn read_hwmon(root: &Path) -> Vec<Reading> {
+    let mut chips: Vec<(String, PathBuf)> = numbered(root, "hwmon", "")
+        .into_iter()
+        .map(|(_, chip)| {
+            let name = read_trimmed(&chip.join("name")).unwrap_or_else(|| "hwmon".into());
+            (name, chip)
+        })
+        .collect();
+    // Orden estable: dentro de cada grupo queda el orden numérico de hwmon.
+    chips.sort_by_key(|(name, _)| !CPU_CHIPS.contains(&name.as_str()));
+
     let mut out = Vec::new();
-    for (_, chip) in numbered(root, "hwmon", "") {
-        let chip_name = read_trimmed(&chip.join("name")).unwrap_or_else(|| "hwmon".into());
+    for (chip_name, chip) in chips {
         for (i, input) in numbered(&chip, "temp", "_input") {
             let Some(milli) = read_trimmed(&input).and_then(|v| v.parse::<i64>().ok()) else {
                 continue;
@@ -80,22 +94,25 @@ mod tests {
     }
 
     #[test]
-    fn recorre_chips_y_sensores_en_orden_numerico() {
+    fn cpu_primero_y_despues_orden_numerico_de_chips_y_sensores() {
+        // `sensors` lista coretemp antes que acpitz, y el panel muestra las dos primeras
+        // lecturas: sin esta prioridad se vería la zona ACPI (27.8 °C, casi constante)
+        // en vez del paquete y el primer núcleo.
         let r = read_hwmon(&fixture());
         let labels: Vec<&str> = r.iter().map(|x| x.label.as_str()).collect();
         assert_eq!(
             labels,
             vec![
-                "acpitz/temp1",
-                "pch_cometlake/temp1",
                 "coretemp/Package id 0",
                 "coretemp/Core 0",
                 "coretemp/Core 9",
+                "acpitz/temp1",
+                "pch_cometlake/temp1",
                 "nvme/Composite",
             ]
         );
         let celsius: Vec<f32> = r.iter().map(|x| x.celsius).collect();
-        for (got, want) in celsius.iter().zip([27.8, 41.0, 33.0, 31.0, 30.0, 38.85]) {
+        for (got, want) in celsius.iter().zip([33.0, 31.0, 30.0, 27.8, 41.0, 38.85]) {
             assert!((got - want).abs() < 0.001, "{got} != {want}");
         }
     }

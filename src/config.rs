@@ -54,6 +54,9 @@ impl Section {
         }
     }
 
+    /// Índice del plasmoid (`FullView.qml`). Sólo lo usa el test que congela la
+    /// correspondencia; el binario no lo necesita.
+    #[cfg(test)]
     pub fn index(&self) -> usize {
         match self {
             Section::Cpu => 0,

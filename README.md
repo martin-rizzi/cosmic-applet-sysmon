@@ -1,26 +1,40 @@
 # cosmic-applet-sysmon
 
-Applet de panel para el escritorio COSMIC que muestra el uso de **CPU por núcleo**
-en barras verticales de colores y el uso de **RAM** en un medidor que cambia de
-color por umbral, con sus porcentajes al lado.
+Applet de panel para el escritorio COSMIC que muestra **CPU por núcleo**, **RAM**,
+**red**, **disco**, **temperaturas** y **GPU**, cada sección con su popup de detalle.
 
-Es una réplica de la vista compacta del plasmoid de KDE
+Es una réplica del plasmoid de KDE
 [`com.labatata.sysmonitor`](https://github.com/LaBatata101/sysmonitor-kde-plasmoid)
 para quienes migran de Plasma a COSMIC y quieren el mismo indicador en la barra:
 al momento de escribir esto ningún applet de COSMIC dibuja una barra por núcleo
 con un color distinto cada una.
 
-- Muestreo cada 2 s desde `/proc/stat` y `/proc/meminfo`, con las mismas fórmulas
-  que el plasmoid (ver `src/proc.rs`): la CPU se calcula por delta contra la
+- Muestreo cada 2 s (configurable) desde `/proc` y `/sys`, con las mismas fórmulas
+  que el plasmoid (ver `src/metrics/`): la CPU se calcula por delta contra la
   muestra anterior con `iowait` contando como tiempo ocioso, y la RAM usada es
   `MemTotal - (MemFree + Buffers + Cached + SReclaimable - Shmem)`.
 - Geometría, colores y umbrales calcados de `CompactView.qml` y
   `VerticalUsageMeter.qml` (ver `src/draw.rs`): barras de 4 px por núcleo a
   tamaño de ícono 16, borde al 35 % del color de texto, y para la RAM azul hasta
   el 70 %, ámbar hasta el 85 % y rojo por encima.
-- Al hacer click abre un popup con el detalle por núcleo, RAM usada/total, caché
-  y swap.
+- Cada sección del panel es su propio botón: abre el popup en esa sección, lo cierra
+  si ya la mostraba o cambia de sección sin cerrarlo. El engranaje del popup abre
+  los ajustes (qué secciones mostrar, su orden y el intervalo).
 - Se adapta al tamaño y a la orientación del panel, y al tema claro/oscuro.
+
+## Secciones
+
+- **CPU**: una barra por núcleo en el panel; en el popup, usuario/sistema, historial, núcleos,
+  top de procesos (uso instantáneo) y tiempo encendido.
+- **RAM**: medidor con color por umbral; en el popup, libre/en caché, top de procesos y swap.
+- **Red**: mini gráfico de subida y bajada con las tasas; en el popup, el gráfico completo.
+- **Disco**: uso del primer punto de montaje; en el popup, lectura/escritura y dispositivos.
+- **Temperaturas**: las dos primeras lecturas de hwmon; en el popup, todos los sensores.
+- **GPU**: uso de la placa más cargada (AMD por sysfs, NVIDIA por `nvidia-smi` con el popup
+  abierto); se oculta si no hay ninguna fuente de datos.
+
+Todo sale de `/proc` y `/sys`; lo caro (top de procesos, VRAM, inventario de discos) sólo se
+mide con su popup abierto.
 
 ## Compilar
 
@@ -62,5 +76,5 @@ el archivo de forma atómica, porque `cosmic-config` lo vigila y una redirecció
 
 ## Créditos y licencia
 
-GPL-3.0-only. El diseño de la vista compacta y los íconos SVG (`res/icons/`)
+GPL-3.0-only. El diseño y los íconos SVG (`res/icons/`)
 vienen del plasmoid `com.labatata.sysmonitor` de LaBatata101, también GPL-3.0.
