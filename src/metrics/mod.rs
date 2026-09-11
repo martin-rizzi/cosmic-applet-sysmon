@@ -4,6 +4,7 @@
 
 pub mod cpu;
 pub mod cpuinfo;
+pub mod disk;
 pub mod history;
 pub mod mem;
 pub mod net;
@@ -15,6 +16,7 @@ use std::time::Instant;
 use crate::config::Section;
 use cpu::Cpu;
 use cpuinfo::CpuInfo;
+use disk::Storage;
 use history::History;
 use mem::Mem;
 use net::Net;
@@ -66,6 +68,11 @@ pub struct Metrics {
     pub net_up_history: History,
     /// Bajada normalizada por muestra.
     pub net_down_history: History,
+    pub storage: Storage,
+    /// Lectura sobre `disk::GRAPH_SCALE`, saturada en 1.
+    pub disk_read_history: History,
+    /// Escritura, ídem.
+    pub disk_write_history: History,
     /// Últimos 60 usos totales de CPU (0–1), uno por tick.
     pub cpu_history: History,
     /// Últimas 60 fracciones de RAM usada, una por tick.
@@ -84,6 +91,12 @@ impl Metrics {
         let (down, up) = self.net.normalized();
         self.net_down_history.push(down);
         self.net_up_history.push(up);
+        self.storage.io.refresh(elapsed);
+        self.disk_read_history.push(disk::graph_fraction(self.storage.io.read_rate));
+        self.disk_write_history.push(disk::graph_fraction(self.storage.io.write_rate));
+        if !expensive_for(detail).storage_detail {
+            self.storage.refresh_primary();
+        }
         self.cpu_history.push(self.cpu.total / 100.0);
         self.ram_history.push(self.mem.fraction());
         self.refresh_expensive(detail);
@@ -96,6 +109,9 @@ impl Metrics {
         if expensive.cpu_detail {
             self.cpu_info.refresh();
             self.uptime_secs = cpuinfo::read_uptime();
+        }
+        if expensive.storage_detail {
+            self.storage.refresh_full();
         }
     }
 

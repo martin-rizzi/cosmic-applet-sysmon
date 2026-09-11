@@ -1,0 +1,8 @@
+/dev/sda3 / btrfs rw,seclabel,relatime,compress=zstd:1,ssd,discard=async,space_cache=v2,subvolid=256,subvol=/root 0 0
+proc /proc proc rw,nosuid,nodev,noexec,relatime 0 0
+/dev/sda3 /home btrfs rw,seclabel,relatime,compress=zstd:1,ssd,discard=async,space_cache=v2,subvolid=257,subvol=/home 0 0
+/dev/sda2 /boot ext4 rw,seclabel,relatime 0 0
+/dev/sda1 /boot/efi vfat rw,relatime 0 0
+tmpfs /tmp tmpfs rw,nosuid,nodev 0 0
+/dev/sdb1 /run/media/tincho/USB\040DISK vfat rw,nosuid,nodev 0 0
+/dev/nvme0n1p2 /mnt/datos ext4 rw,relatime 0 0

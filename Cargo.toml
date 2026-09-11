@@ -20,6 +20,11 @@ features = ["macro"]
 version = "1"
 features = ["derive"]
 
+[dependencies.rustix]
+# Ya está en el árbol por libcosmic; se declara para statvfs (`fs`) y el tamaño de página (`param`).
+version = "1.1"
+features = ["fs", "param"]
+
 [profile.release]
 lto = "thin"
 opt-level = 3
