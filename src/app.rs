@@ -13,6 +13,12 @@ use crate::metrics::Metrics;
 
 pub const CPU_ICON: &[u8] = include_bytes!("../res/icons/am-cpu-symbolic.svg");
 pub const RAM_ICON: &[u8] = include_bytes!("../res/icons/am-memory-symbolic.svg");
+pub const TEMP_ICON: &[u8] = include_bytes!("../res/icons/am-temperature-symbolic.svg");
+pub const NET_ICON: &[u8] = include_bytes!("../res/icons/am-network-symbolic.svg");
+pub const DISK_ICON: &[u8] = include_bytes!("../res/icons/am-harddisk-symbolic.svg");
+pub const GPU_ICON: &[u8] = include_bytes!("../res/icons/am-gpu-symbolic.svg");
+pub const UP_ICON: &[u8] = include_bytes!("../res/icons/am-up-symbolic.svg");
+pub const DOWN_ICON: &[u8] = include_bytes!("../res/icons/am-down-symbolic.svg");
 
 /// Tamaño de referencia del plasmoid: `Kirigami.Units.iconSizes.small`.
 pub const REFERENCE_ICON_SIZE: f32 = 16.0;
@@ -96,20 +102,28 @@ impl SysMon {
         (4.0 * (h / REFERENCE_ICON_SIZE)).round() as u16
     }
 
-    /// Color del texto del panel en hexadecimal, para los bordes de los medidores.
-    pub fn text_color_hex(&self) -> String {
+    /// Color del texto del panel (RGB 0–1), del tema del applet.
+    fn on_bg(&self) -> [f32; 3] {
         let theme = self
             .core
             .applet
             .theme()
             .unwrap_or_else(cosmic::theme::active);
         let c = theme.cosmic().on_bg_color();
-        format!(
-            "#{:02x}{:02x}{:02x}",
-            (c.red * 255.0).round() as u8,
-            (c.green * 255.0).round() as u8,
-            (c.blue * 255.0).round() as u8
-        )
+        [c.red, c.green, c.blue]
+    }
+
+    /// Color del texto del panel en hexadecimal, para los bordes de los medidores.
+    pub fn text_color_hex(&self) -> String {
+        let [r, g, b] = self.on_bg();
+        let byte = |v: f32| (v * 255.0).round() as u8;
+        format!("#{:02x}{:02x}{:02x}", byte(r), byte(g), byte(b))
+    }
+
+    /// Texto al 35 %: `themePlaceholderTextColor` del plasmoid.
+    pub fn faint_text_color(&self) -> cosmic::iced::Color {
+        let [r, g, b] = self.on_bg();
+        cosmic::iced::Color::from_rgba(r, g, b, 0.35)
     }
 
     /// Arma la `Task` que abre el popup, sin tocar `self.selected` ni
@@ -146,7 +160,7 @@ impl SysMon {
             .into()
     }
 
-    fn icon<'a>(&self, bytes: &'static [u8], size: u16) -> Element<'a, Message> {
+    pub fn icon<'a>(&self, bytes: &'static [u8], size: u16) -> Element<'a, Message> {
         let mut handle = widget::icon::from_svg_bytes(bytes);
         handle.symbolic = true;
         widget::icon(handle).size(size).into()
