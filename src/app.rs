@@ -10,6 +10,7 @@ use std::time::Duration;
 
 use crate::config::{Config, Section};
 use crate::metrics::cpu::Cpu;
+use crate::metrics::history::History;
 use crate::metrics::mem::Mem;
 
 pub const CPU_ICON: &[u8] = include_bytes!("../res/icons/am-cpu-symbolic.svg");
@@ -26,6 +27,10 @@ pub struct SysMon {
     config: Config,
     cpu: Cpu,
     mem: Mem,
+    /// Últimos 60 usos totales de CPU (0–1), uno por tick.
+    cpu_history: History,
+    /// Últimas 60 fracciones de RAM usada, una por tick.
+    ram_history: History,
     /// Sección que muestra el popup (o que mostraría si estuviera abierto).
     selected: Section,
     /// Si el popup está mostrando el panel de ajustes en vez del detalle de una
@@ -71,6 +76,14 @@ impl SysMon {
 
     pub fn mem(&self) -> &Mem {
         &self.mem
+    }
+
+    pub fn cpu_history(&self) -> &History {
+        &self.cpu_history
+    }
+
+    pub fn ram_history(&self) -> &History {
+        &self.ram_history
     }
 
     pub fn selected(&self) -> Section {
@@ -183,6 +196,8 @@ impl cosmic::Application for SysMon {
             config: Config::load(Self::APP_ID),
             cpu: Cpu::default(),
             mem: Mem::default(),
+            cpu_history: History::default(),
+            ram_history: History::default(),
             selected: Section::Cpu,
             showing_settings: false,
         };
@@ -222,6 +237,8 @@ impl cosmic::Application for SysMon {
             Message::Tick => {
                 self.cpu.refresh();
                 self.mem.refresh();
+                self.cpu_history.push(self.cpu.total / 100.0);
+                self.ram_history.push(self.mem.fraction());
                 Task::none()
             }
             Message::ConfigChanged(config) => {
@@ -361,6 +378,8 @@ mod tests {
             config: Config::default(),
             cpu: Cpu::default(),
             mem: Mem::default(),
+            cpu_history: History::default(),
+            ram_history: History::default(),
             selected,
             showing_settings,
         };
@@ -375,6 +394,8 @@ mod tests {
             config: Config::default(),
             cpu: Cpu::default(),
             mem: Mem::default(),
+            cpu_history: History::default(),
+            ram_history: History::default(),
             selected,
             showing_settings,
         }

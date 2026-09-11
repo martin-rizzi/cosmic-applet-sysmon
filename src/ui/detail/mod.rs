@@ -10,6 +10,7 @@ use cosmic::Element;
 
 use crate::app::{Message, SysMon};
 use crate::config::Section;
+use crate::metrics::history::{window_label, History};
 use crate::metrics::mem::format_mib;
 
 /// El plasmoid lanza `kstart plasma-systemmonitor`. COSMIC no trae monitor propio,
@@ -42,7 +43,41 @@ fn is_executable_file(path: &std::path::Path) -> bool {
         .unwrap_or(false)
 }
 
-/// Detalle de CPU: uso total y una barra horizontal por núcleo.
+/// Ancho del gráfico: el de una fila de núcleo (rótulo 48 + barra 140 + valor 40 +
+/// dos espacios de 8), para que el popup no cambie de ancho al sumarlo.
+const GRAPH_W: f32 = 244.0;
+/// `Layout.preferredHeight: 58` del Canvas en CpuDetail.qml y RamDetail.qml.
+const GRAPH_H: f32 = 58.0;
+
+/// Gráfico de historial con el rótulo del eje debajo. El extremo izquierdo sale del
+/// intervalo configurado, no de un texto fijo como en el plasmoid.
+fn history_view<'a>(app: &'a SysMon, history: &History) -> Element<'a, Message> {
+    let svg = crate::draw::history_graph(
+        &history.points(),
+        GRAPH_W,
+        GRAPH_H,
+        crate::draw::NORMAL,
+        &app.text_color_hex(),
+    );
+
+    Column::new()
+        .spacing(2)
+        .width(Length::Fixed(GRAPH_W))
+        .push(
+            widget::svg(widget::svg::Handle::from_memory(svg.into_bytes()))
+                .width(Length::Fixed(GRAPH_W))
+                .height(Length::Fixed(GRAPH_H)),
+        )
+        .push(
+            Row::new()
+                .push(widget::text::caption(window_label(app.config().update_interval)))
+                .push(widget::space::horizontal())
+                .push(widget::text::caption("ahora")),
+        )
+        .into()
+}
+
+/// Detalle de CPU: uso total, historial y una barra horizontal por núcleo.
 fn cpu_detail(app: &SysMon) -> Element<'_, Message> {
     let border = app.text_color_hex();
     let mut cores = Column::new().spacing(4);
@@ -71,11 +106,12 @@ fn cpu_detail(app: &SysMon) -> Element<'_, Message> {
     Column::new()
         .spacing(8)
         .push(widget::text::title4(format!("CPU {:.0}%", app.cpu().total)))
+        .push(history_view(app, app.cpu_history()))
         .push(cores)
         .into()
 }
 
-/// Detalle de RAM: resumen de uso, caché y swap si existe.
+/// Detalle de RAM: historial, resumen de uso, caché y swap si existe.
 fn ram_detail(app: &SysMon) -> Element<'_, Message> {
     let mem = app.mem();
     let resumen = format!(
@@ -88,6 +124,7 @@ fn ram_detail(app: &SysMon) -> Element<'_, Message> {
     let mut col = Column::new()
         .spacing(8)
         .push(widget::text::title4("Memoria"))
+        .push(history_view(app, app.ram_history()))
         .push(widget::text::body(resumen))
         .push(widget::text::caption(format!(
             "En caché: {}",
