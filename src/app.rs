@@ -20,6 +20,11 @@ pub const RAM_ICON: &[u8] = include_bytes!("../res/icons/am-memory-symbolic.svg"
 pub const REFERENCE_ICON_SIZE: f32 = 16.0;
 /// Ancho por núcleo a ese tamaño de referencia.
 pub const PX_PER_CORE: f32 = 4.0;
+/// Ancho mínimo de la caja de CPU al tamaño de referencia. Los 4 px por núcleo
+/// del plasmoid asumen bastantes núcleos: con 4 y el panel en XS la caja queda
+/// en 16 px y cada barra en 3, ilegible. El mínimo sólo actúa en ese caso —
+/// de 6 núcleos para arriba manda `PX_PER_CORE` y la geometría no cambia.
+pub const MIN_CPU_BOX: f32 = 24.0;
 
 pub struct SysMon {
     core: Core,

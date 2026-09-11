@@ -75,10 +75,9 @@ pub fn section_content<'a>(app: &'a SysMon, s: Section) -> Option<Element<'a, Me
 
     match s {
         Section::Cpu => {
-            // Ancho de la caja: 4 px por núcleo a escala, con mínimo del 70 % de la altura.
             let scale = h / crate::app::REFERENCE_ICON_SIZE;
             let cores = app.cpu().core_count().max(1) as f32;
-            let w = (h * 0.7).max(cores * crate::app::PX_PER_CORE * scale);
+            let w = cpu_box_width(cores, h, scale);
             let cpu = app.cpu();
             Some(app.section(
                 crate::app::CPU_ICON,
@@ -110,5 +109,47 @@ pub fn section_content<'a>(app: &'a SysMon, s: Section) -> Option<Element<'a, Me
         }
         // Sin colector todavía: no ocupan lugar en el panel.
         Section::Network | Section::Storage | Section::Temps | Section::Gpu => None,
+    }
+}
+
+/// Ancho de la caja de CPU: como en el QML, `PX_PER_CORE` por núcleo a escala,
+/// nunca más angosta que el 70 % de la altura ni que `MIN_CPU_BOX`.
+fn cpu_box_width(cores: f32, h: f32, scale: f32) -> f32 {
+    (h * 0.7)
+        .max(cores * crate::app::PX_PER_CORE * scale)
+        .max(crate::app::MIN_CPU_BOX * scale)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// El caso que motivó el mínimo: panel XS (ícono de 16 px) y 4 núcleos.
+    /// Sin él la caja quedaba en 16 px y cada barra en 3.
+    #[test]
+    fn pocos_nucleos_en_panel_chico_llegan_al_minimo() {
+        let w = cpu_box_width(4.0, 16.0, 1.0);
+        assert_eq!(w, 24.0);
+        assert!(w / 4.0 >= 5.0, "cada barra tiene que pasar los 5 px");
+    }
+
+    /// De 6 núcleos para arriba manda `PX_PER_CORE`: la geometría calcada del
+    /// plasmoid queda igual que antes de agregar el mínimo.
+    #[test]
+    fn muchos_nucleos_conservan_la_geometria_del_plasmoid() {
+        assert_eq!(cpu_box_width(8.0, 16.0, 1.0), 32.0);
+        assert_eq!(cpu_box_width(16.0, 16.0, 1.0), 64.0);
+    }
+
+    /// El mínimo escala con el panel, igual que el resto de la geometría.
+    #[test]
+    fn el_minimo_escala_con_el_panel() {
+        assert_eq!(cpu_box_width(4.0, 32.0, 2.0), 48.0);
+    }
+
+    /// Con un solo núcleo sigue mandando el mínimo, no el 70 % de la altura.
+    #[test]
+    fn un_solo_nucleo_no_colapsa_la_caja() {
+        assert_eq!(cpu_box_width(1.0, 16.0, 1.0), 24.0);
     }
 }
