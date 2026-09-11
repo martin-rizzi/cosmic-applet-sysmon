@@ -76,9 +76,9 @@ pub fn section_content<'a>(app: &'a SysMon, s: Section) -> Option<Element<'a, Me
     match s {
         Section::Cpu => {
             let scale = h / crate::app::REFERENCE_ICON_SIZE;
-            let cores = app.cpu().core_count().max(1) as f32;
+            let cores = app.metrics().cpu.core_count().max(1) as f32;
             let w = cpu_box_width(cores, h, scale);
-            let cpu = app.cpu();
+            let cpu = &app.metrics().cpu;
             Some(app.section(
                 crate::app::CPU_ICON,
                 icon_size,
@@ -96,7 +96,7 @@ pub fn section_content<'a>(app: &'a SysMon, s: Section) -> Option<Element<'a, Me
         }
         Section::Ram => {
             let w = (h * 0.7).round();
-            let fraction = app.mem().fraction();
+            let fraction = app.metrics().mem.fraction();
             Some(app.section(
                 crate::app::RAM_ICON,
                 icon_size,

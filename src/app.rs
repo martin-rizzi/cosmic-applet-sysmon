@@ -6,12 +6,10 @@ use cosmic::iced::{self, Alignment, Length, Subscription};
 use cosmic::widget::{self, Row};
 use cosmic::Element;
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::config::{Config, Section};
-use crate::metrics::cpu::Cpu;
-use crate::metrics::history::History;
-use crate::metrics::mem::Mem;
+use crate::metrics::Metrics;
 
 pub const CPU_ICON: &[u8] = include_bytes!("../res/icons/am-cpu-symbolic.svg");
 pub const RAM_ICON: &[u8] = include_bytes!("../res/icons/am-memory-symbolic.svg");
@@ -30,12 +28,8 @@ pub struct SysMon {
     core: Core,
     popup: Option<Id>,
     config: Config,
-    cpu: Cpu,
-    mem: Mem,
-    /// Últimos 60 usos totales de CPU (0–1), uno por tick.
-    cpu_history: History,
-    /// Últimas 60 fracciones de RAM usada, una por tick.
-    ram_history: History,
+    /// Todos los colectores y sus historiales.
+    metrics: Metrics,
     /// Sección que muestra el popup (o que mostraría si estuviera abierto).
     selected: Section,
     /// Si el popup está mostrando el panel de ajustes en vez del detalle de una
@@ -75,20 +69,17 @@ impl SysMon {
         &self.config
     }
 
-    pub fn cpu(&self) -> &Cpu {
-        &self.cpu
+    pub fn metrics(&self) -> &Metrics {
+        &self.metrics
     }
 
-    pub fn mem(&self) -> &Mem {
-        &self.mem
-    }
-
-    pub fn cpu_history(&self) -> &History {
-        &self.cpu_history
-    }
-
-    pub fn ram_history(&self) -> &History {
-        &self.ram_history
+    /// La sección cuyo panel de detalle se está viendo: popup abierto y no en ajustes.
+    pub fn visible_detail(&self) -> Option<Section> {
+        if self.popup.is_some() && !self.showing_settings {
+            Some(self.selected)
+        } else {
+            None
+        }
     }
 
     pub fn selected(&self) -> Section {
@@ -199,16 +190,12 @@ impl cosmic::Application for SysMon {
             core,
             popup: None,
             config: Config::load(Self::APP_ID),
-            cpu: Cpu::default(),
-            mem: Mem::default(),
-            cpu_history: History::default(),
-            ram_history: History::default(),
+            metrics: Metrics::default(),
             selected: Section::Cpu,
             showing_settings: false,
         };
-        // Primera lectura: deja la línea base de /proc/stat y la RAM ya poblada.
-        app.cpu.refresh();
-        app.mem.refresh();
+        // Primera lectura: deja las líneas base de los contadores.
+        app.metrics.tick(Instant::now(), None);
         (app, Task::none())
     }
 
@@ -240,10 +227,7 @@ impl cosmic::Application for SysMon {
     fn update(&mut self, message: Self::Message) -> Task<Self::Message> {
         match message {
             Message::Tick => {
-                self.cpu.refresh();
-                self.mem.refresh();
-                self.cpu_history.push(self.cpu.total / 100.0);
-                self.ram_history.push(self.mem.fraction());
+                self.metrics.tick(Instant::now(), self.visible_detail());
                 Task::none()
             }
             Message::ConfigChanged(config) => {
@@ -381,10 +365,7 @@ mod tests {
             core: Core::default(),
             popup: Some(id),
             config: Config::default(),
-            cpu: Cpu::default(),
-            mem: Mem::default(),
-            cpu_history: History::default(),
-            ram_history: History::default(),
+            metrics: Metrics::default(),
             selected,
             showing_settings,
         };
@@ -397,10 +378,7 @@ mod tests {
             core: Core::default(),
             popup: None,
             config: Config::default(),
-            cpu: Cpu::default(),
-            mem: Mem::default(),
-            cpu_history: History::default(),
-            ram_history: History::default(),
+            metrics: Metrics::default(),
             selected,
             showing_settings,
         }
@@ -479,5 +457,23 @@ mod tests {
         let _ = cosmic::Application::update(&mut app, Message::OpenSection(Section::Cpu));
         assert!(app.popup.is_none());
         assert!(!app.showing_settings);
+    }
+
+    #[test]
+    fn visible_detail_sin_popup_es_none() {
+        let app = con_popup_cerrado(Section::Cpu, false);
+        assert_eq!(app.visible_detail(), None);
+    }
+
+    #[test]
+    fn visible_detail_con_ajustes_es_none() {
+        let (app, _id) = con_popup_abierto(Section::Ram, true);
+        assert_eq!(app.visible_detail(), None);
+    }
+
+    #[test]
+    fn visible_detail_con_popup_es_la_seccion_elegida() {
+        let (app, _id) = con_popup_abierto(Section::Ram, false);
+        assert_eq!(app.visible_detail(), Some(Section::Ram));
     }
 }

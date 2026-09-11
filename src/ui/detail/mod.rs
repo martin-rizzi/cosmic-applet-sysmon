@@ -81,7 +81,7 @@ fn history_view<'a>(app: &'a SysMon, history: &History) -> Element<'a, Message> 
 fn cpu_detail(app: &SysMon) -> Element<'_, Message> {
     let border = app.text_color_hex();
     let mut cores = Column::new().spacing(4);
-    for (i, usage) in app.cpu().cores.iter().enumerate() {
+    for (i, usage) in app.metrics().cpu.cores.iter().enumerate() {
         let bar = crate::draw::horizontal_bar(
             usage / 100.0,
             140.0,
@@ -105,15 +105,15 @@ fn cpu_detail(app: &SysMon) -> Element<'_, Message> {
 
     Column::new()
         .spacing(8)
-        .push(widget::text::title4(format!("CPU {:.0}%", app.cpu().total)))
-        .push(history_view(app, app.cpu_history()))
+        .push(widget::text::title4(format!("CPU {:.0}%", app.metrics().cpu.total)))
+        .push(history_view(app, &app.metrics().cpu_history))
         .push(cores)
         .into()
 }
 
 /// Detalle de RAM: historial, resumen de uso, caché y swap si existe.
 fn ram_detail(app: &SysMon) -> Element<'_, Message> {
-    let mem = app.mem();
+    let mem = &app.metrics().mem;
     let resumen = format!(
         "{} / {} ({:.0}%)",
         format_mib(mem.used),
@@ -124,7 +124,7 @@ fn ram_detail(app: &SysMon) -> Element<'_, Message> {
     let mut col = Column::new()
         .spacing(8)
         .push(widget::text::title4("Memoria"))
-        .push(history_view(app, app.ram_history()))
+        .push(history_view(app, &app.metrics().ram_history))
         .push(widget::text::body(resumen))
         .push(widget::text::caption(format!(
             "En caché: {}",
