@@ -1,8 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! Contenido del popup: rutea por la sección elegida (`SysMon::selected`) y agrega el
-//! pie con el botón del monitor de sistema y el engranaje de ajustes. Reemplaza a lo
-//! que hasta la Task 4 armaba `SysMon::view_window` a mano.
+//! Contenido del popup: rutea por la sección elegida (`SysMon::selected`) y agrega el pie
+//! con el monitor de sistema y los ajustes. Cada panel vive en su archivo; acá quedan los
+//! widgets que comparten.
+
+mod cpu;
+mod gpu;
+mod net;
+mod ram;
+mod storage;
+mod temp;
 
 use cosmic::iced::{Alignment, Length};
 use cosmic::widget::{self, Column, Row};
@@ -10,8 +17,8 @@ use cosmic::Element;
 
 use crate::app::{Message, SysMon};
 use crate::config::Section;
-use crate::metrics::history::{window_label, History};
-use crate::metrics::mem::format_mib;
+use crate::draw::DualGraph;
+use crate::metrics::history::window_label;
 
 /// El plasmoid lanza `kstart plasma-systemmonitor`. COSMIC no trae monitor propio,
 /// así que se usa el primero disponible en el PATH.
@@ -27,109 +34,107 @@ pub fn system_monitor_command() -> Option<&'static str> {
     CANDIDATES.into_iter().find(|c| crate::exec::executable_in_path(c))
 }
 
-/// Ancho del gráfico: el de una fila de núcleo (rótulo 48 + barra 140 + valor 40 +
-/// dos espacios de 8), para que el popup no cambie de ancho al sumarlo.
-const GRAPH_W: f32 = 244.0;
-/// `Layout.preferredHeight: 58` del Canvas en CpuDetail.qml y RamDetail.qml.
-const GRAPH_H: f32 = 58.0;
+/// Ancho del contenido del popup: `gridUnit * 20` del plasmoid, menos márgenes.
+pub const CONTENT_W: f32 = 300.0;
 
-/// Gráfico de historial con el rótulo del eje debajo. El extremo izquierdo sale del
-/// intervalo configurado, no de un texto fijo como en el plasmoid.
-fn history_view<'a>(app: &'a SysMon, history: &History) -> Element<'a, Message> {
-    let svg = crate::draw::history_graph(
-        &history.points(),
-        GRAPH_W,
-        GRAPH_H,
-        crate::draw::NORMAL,
-        &app.text_color_hex(),
-    );
+fn svg<'a>(svg: String, w: f32, h: f32) -> Element<'a, Message> {
+    widget::svg(widget::svg::Handle::from_memory(svg.into_bytes()))
+        .width(Length::Fixed(w))
+        .height(Length::Fixed(h))
+        .into()
+}
 
+/// `StatRow.qml`: rótulo a la izquierda, valor en negrita a la derecha.
+fn stat_row<'a>(label: &'a str, value: String) -> Element<'a, Message> {
+    Row::new()
+        .width(Length::Fill)
+        .push(widget::text::body(label).width(Length::Fill))
+        .push(widget::text::body(value).font(cosmic::font::bold()))
+        .into()
+}
+
+/// Título de bloque centrado ("Procesos", "Swap", "Dispositivos").
+fn block_title(text: &str) -> Element<'_, Message> {
+    widget::container(widget::text::heading(text))
+        .center_x(Length::Fill)
+        .into()
+}
+
+fn centered_caption<'a>(text: String) -> Element<'a, Message> {
+    widget::container(widget::text::caption(text))
+        .center_x(Length::Fill)
+        .into()
+}
+
+/// Barra horizontal con el valor escrito a la derecha.
+fn bar_row<'a>(fraction: f32, fill: &str, border: &str, value: String) -> Element<'a, Message> {
+    let w = CONTENT_W - 48.0;
+    Row::new()
+        .spacing(8)
+        .align_y(Alignment::Center)
+        .push(svg(crate::draw::horizontal_bar(fraction, w, 10.0, fill, border), w, 10.0))
+        .push(widget::text::caption(value))
+        .into()
+}
+
+/// Rótulos del eje de tiempo. El extremo izquierdo sale del intervalo configurado.
+fn time_axis(app: &SysMon) -> Element<'_, Message> {
+    Row::new()
+        .width(Length::Fill)
+        .push(widget::text::caption(window_label(app.config().update_interval)))
+        .push(widget::space::horizontal())
+        .push(widget::text::caption("ahora"))
+        .into()
+}
+
+/// Gráfico de una serie con su eje de tiempo.
+fn history_view<'a>(app: &'a SysMon, points: &[f32], h: f32) -> Element<'a, Message> {
+    let graph = crate::draw::history_graph(points, CONTENT_W, h, crate::draw::NORMAL, &app.text_color_hex());
     Column::new()
         .spacing(2)
-        .width(Length::Fixed(GRAPH_W))
-        .push(
-            widget::svg(widget::svg::Handle::from_memory(svg.into_bytes()))
-                .width(Length::Fixed(GRAPH_W))
-                .height(Length::Fixed(GRAPH_H)),
-        )
-        .push(
-            Row::new()
-                .push(widget::text::caption(window_label(app.config().update_interval)))
-                .push(widget::space::horizontal())
-                .push(widget::text::caption("ahora")),
-        )
+        .push(svg(graph, CONTENT_W, h))
+        .push(time_axis(app))
         .into()
 }
 
-/// Detalle de CPU: uso total, historial y una barra horizontal por núcleo.
-fn cpu_detail(app: &SysMon) -> Element<'_, Message> {
-    let border = app.text_color_hex();
-    let mut cores = Column::new().spacing(4);
-    for (i, usage) in app.metrics().cpu.cores.iter().enumerate() {
-        let bar = crate::draw::horizontal_bar(
-            usage / 100.0,
-            140.0,
-            8.0,
-            crate::draw::CORE_COLORS[i % crate::draw::CORE_COLORS.len()],
-            &border,
-        );
-        cores = cores.push(
-            Row::new()
-                .push(widget::text::caption(format!("cpu{i}")).width(Length::Fixed(48.0)))
-                .push(
-                    widget::svg(widget::svg::Handle::from_memory(bar.into_bytes()))
-                        .width(Length::Fixed(140.0))
-                        .height(Length::Fixed(8.0)),
-                )
-                .push(widget::text::caption(format!("{usage:.0}%")).width(Length::Fixed(40.0)))
-                .spacing(8)
-                .align_y(Alignment::Center),
-        );
-    }
-
+/// Gráfico de dos series con su eje de tiempo.
+fn dual_view<'a>(app: &'a SysMon, graph: &DualGraph, h: f32) -> Element<'a, Message> {
+    let drawn = crate::draw::dual_history_graph(graph, CONTENT_W, h, &app.text_color_hex());
     Column::new()
-        .spacing(8)
-        .push(widget::text::title4(format!("CPU {:.0}%", app.metrics().cpu.total)))
-        .push(history_view(app, &app.metrics().cpu_history))
-        .push(cores)
+        .spacing(2)
+        .push(svg(drawn, CONTENT_W, h))
+        .push(time_axis(app))
         .into()
 }
 
-/// Detalle de RAM: historial, resumen de uso, caché y swap si existe.
-fn ram_detail(app: &SysMon) -> Element<'_, Message> {
-    let mem = &app.metrics().mem;
-    let resumen = format!(
-        "{} / {} ({:.0}%)",
-        format_mib(mem.used),
-        format_mib(mem.total),
-        mem.fraction() * 100.0
-    );
-
-    let mut col = Column::new()
-        .spacing(8)
-        .push(widget::text::title4("Memoria"))
-        .push(history_view(app, &app.metrics().ram_history))
-        .push(widget::text::body(resumen))
-        .push(widget::text::caption(format!(
-            "En caché: {}",
-            format_mib(mem.cached)
-        )));
-
-    if mem.swap_total > 0.0 {
-        col = col.push(widget::text::caption(format!(
-            "Swap: {} / {}",
-            format_mib(mem.swap_used),
-            format_mib(mem.swap_total)
-        )));
+/// Muestra de color + texto: las leyendas de red y disco.
+fn legend<'a>(items: Vec<(&str, String)>) -> Element<'a, Message> {
+    let mut row = Row::new().spacing(6).align_y(Alignment::Center);
+    for (color, text) in items {
+        let swatch = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="12" height="3"><rect width="12" height="3" rx="1" fill="{color}"/></svg>"#
+        );
+        row = row.push(svg(swatch, 12.0, 3.0)).push(widget::text::caption(text));
     }
+    row.into()
+}
 
+/// Renglones "nombre … valor" de los tops de procesos.
+fn process_rows<'a>(rows: impl IntoIterator<Item = (String, String)>) -> Element<'a, Message> {
+    let mut col = Column::new().spacing(2);
+    for (name, value) in rows {
+        col = col.push(
+            Row::new()
+                .width(Length::Fill)
+                .push(widget::text::body(name).font(cosmic::font::bold()).width(Length::Fill))
+                .push(widget::text::body(value)),
+        );
+    }
     col.into()
 }
 
-/// Contenido del popup: la sección elegida, más el pie con monitor de sistema y
-/// ajustes. Las secciones sin colector todavía (Plan 2) muestran un texto de aviso.
-/// Si el usuario abrió los ajustes (engranaje del pie), se muestra esa página en vez
-/// del detalle.
+/// Contenido del popup: el panel de la sección elegida, o los ajustes si se abrió el
+/// engranaje, más el pie.
 pub fn view(app: &SysMon) -> Element<'_, Message> {
     if app.showing_settings() {
         return app
@@ -139,12 +144,14 @@ pub fn view(app: &SysMon) -> Element<'_, Message> {
             .into();
     }
 
-    let body: Element<Message> = match app.selected() {
-        Section::Cpu => cpu_detail(app),
-        Section::Ram => ram_detail(app),
-        Section::Network | Section::Storage | Section::Temps | Section::Gpu => {
-            widget::text::body("Sin datos todavía").into()
-        }
+    let section = app.selected();
+    let body: Element<Message> = match section {
+        Section::Cpu => cpu::view(app),
+        Section::Ram => ram::view(app),
+        Section::Network => net::view(app),
+        Section::Storage => storage::view(app),
+        Section::Temps => temp::view(app),
+        Section::Gpu => gpu::view(app),
     };
 
     let mut footer = Row::new().spacing(8).align_y(Alignment::Center);
@@ -162,9 +169,11 @@ pub fn view(app: &SysMon) -> Element<'_, Message> {
     let content = Column::new()
         .spacing(8)
         .padding(12)
+        .width(Length::Fixed(CONTENT_W + 24.0))
+        .push(widget::container(widget::text::title4(section.label())).center_x(Length::Fill))
         .push(body)
         .push(widget::divider::horizontal::default())
-        .push(footer);
+        .push(widget::container(footer).center_x(Length::Fill));
 
     app.core().applet.popup_container(content).into()
 }

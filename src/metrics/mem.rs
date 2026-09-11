@@ -46,6 +46,8 @@ pub fn parse_meminfo(raw: &str) -> MemFields {
 pub struct Mem {
     pub total: f64,
     pub used: f64,
+    /// Libre + buffers + caché: lo que el QML llama `ramFree`.
+    pub free: f64,
     pub cached: f64,
     pub swap_total: f64,
     pub swap_used: f64,
@@ -58,6 +60,7 @@ impl Mem {
         Self {
             total: f.total,
             used: f.total - free,
+            free,
             cached,
             swap_total: f.swap_total,
             swap_used: f.swap_total - f.swap_free,
@@ -77,15 +80,6 @@ impl Mem {
         } else {
             0.0
         }
-    }
-}
-
-/// "12.3 GiB" / "512 MiB", como el `formatMemoryMib` del plasmoid.
-pub fn format_mib(mib: f64) -> String {
-    if mib >= 1024.0 {
-        format!("{:.1} GiB", mib / 1024.0)
-    } else {
-        format!("{:.0} MiB", mib)
     }
 }
 
@@ -136,8 +130,10 @@ mod tests {
     }
 
     #[test]
-    fn format_mib_cambia_a_gib_en_1024() {
-        assert_eq!(format_mib(512.0), "512 MiB");
-        assert_eq!(format_mib(2048.0), "2.0 GiB");
+    fn libre_es_free_mas_buffers_mas_cached() {
+        let m = Mem::from_fields(parse_meminfo(MEMINFO));
+        // (2935564 + 1912) / 1024 + 20052.004
+        assert!((m.free - 22_920.633).abs() < 0.01);
+        assert!((m.total - m.free - m.used).abs() < 0.001);
     }
 }
