@@ -6,6 +6,8 @@ pub mod cpu;
 pub mod cpuinfo;
 pub mod history;
 pub mod mem;
+pub mod net;
+pub mod rate;
 pub mod temp;
 
 use std::time::Instant;
@@ -15,6 +17,7 @@ use cpu::Cpu;
 use cpuinfo::CpuInfo;
 use history::History;
 use mem::Mem;
+use net::Net;
 
 /// Contenido de un archivo chico de /proc o /sys, sin espacios ni salto final.
 pub(crate) fn read_trimmed(path: &std::path::Path) -> Option<String> {
@@ -58,6 +61,11 @@ pub struct Metrics {
     pub uptime_secs: u64,
     /// Un renglón por sensor, en el orden de hwmon.
     pub temps: Vec<temp::Reading>,
+    pub net: Net,
+    /// Subida normalizada por muestra (ver `Net::normalized`).
+    pub net_up_history: History,
+    /// Bajada normalizada por muestra.
+    pub net_down_history: History,
     /// Últimos 60 usos totales de CPU (0–1), uno por tick.
     pub cpu_history: History,
     /// Últimas 60 fracciones de RAM usada, una por tick.
@@ -68,10 +76,14 @@ pub struct Metrics {
 impl Metrics {
     /// Un tick de muestreo. `detail` es la sección cuyo panel está a la vista, si hay alguna.
     pub fn tick(&mut self, now: Instant, detail: Option<Section>) {
-        let _elapsed = self.elapsed_since_last(now);
+        let elapsed = self.elapsed_since_last(now);
         self.cpu.refresh();
         self.mem.refresh();
         self.temps = temp::read_hwmon(std::path::Path::new("/sys/class/hwmon"));
+        self.net.refresh(elapsed);
+        let (down, up) = self.net.normalized();
+        self.net_down_history.push(down);
+        self.net_up_history.push(up);
         self.cpu_history.push(self.cpu.total / 100.0);
         self.ram_history.push(self.mem.fraction());
         self.refresh_expensive(detail);
